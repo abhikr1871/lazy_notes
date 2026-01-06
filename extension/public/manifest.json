@@ -1,6 +1,6 @@
 {
     "manifest_version": 3,
-    "name": "IntelliAsk AI",
+    "name": "Lazzy",
     "version": "1.0.0",
     "description": "AI-powered web assistant contextually aware of your browsing.",
     "permissions": [

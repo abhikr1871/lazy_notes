@@ -35,26 +35,40 @@ function toggleSidebar() {
 
 // Function to inject button on YouTube
 function injectButton() {
-    if (document.getElementById("intelliask-button")) return;
+    if (document.getElementById("lazyy-notes-button")) return;
 
-    const target = document.querySelector("#owner"); // Element below video title (channel owner)
+    const target = document.querySelector("#owner");
     if (target) {
         const btn = document.createElement("button");
-        btn.id = "intelliask-button";
-        btn.innerText = "📝 Open Notes";
+        btn.id = "lazyy-notes-button";
+        btn.innerText = "🦉 Open Lazzy";
         btn.style.cssText = `
-      background-color: #FACC15; 
-      color: black; 
-      border: none; 
+      background: linear-gradient(135deg, #7c3aed 0%, #db2777 100%);
+      color: white; 
+      border: 1px solid rgba(255,255,255,0.2); 
       padding: 8px 16px; 
       margin-left: 10px; 
-      border-radius: 18px; 
-      font-weight: bold; 
+      border-radius: 20px; 
+      font-weight: 600; 
       cursor: pointer; 
-      font-family: Roboto, Arial, sans-serif;
-      font-size: 14px;
+      font-family: 'Inter', Roboto, Arial, sans-serif;
+      font-size: 13px;
       vertical-align: middle;
+      box-shadow: 0 4px 6px -1px rgba(99, 102, 241, 0.3);
+      transition: all 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
     `;
+
+        btn.onmouseover = () => {
+            btn.style.transform = "translateY(-1px)";
+            btn.style.boxShadow = "0 6px 8px -1px rgba(99, 102, 241, 0.4)";
+        };
+        btn.onmouseout = () => {
+            btn.style.transform = "translateY(0)";
+            btn.style.boxShadow = "0 4px 6px -1px rgba(99, 102, 241, 0.3)";
+        };
 
         btn.onclick = () => {
             toggleSidebar();
@@ -68,9 +82,6 @@ function injectButton() {
 const observer = new MutationObserver(() => {
     if (window.location.href.includes("youtube.com/watch")) {
         injectButton();
-
-        // Also re-inject sidebar if it was lost during navigation but should be open? 
-        // For now let's keep it manual toggle.
     }
 });
 
@@ -90,6 +101,28 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         } else {
             sendResponse({ time: null });
         }
+    }
+
+    if (request.action === "captureVideoFrame") {
+        const video = document.querySelector("video");
+        if (video) {
+            try {
+                const canvas = document.createElement("canvas");
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                const ctx = canvas.getContext("2d");
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                const dataUrl = canvas.toDataURL("image/jpeg");
+                const time = new Date(video.currentTime * 1000).toISOString().substring(14, 19);
+                sendResponse({ success: true, imageData: dataUrl, time: time });
+            } catch (e) {
+                console.error("Frame capture error:", e);
+                sendResponse({ success: false, error: e.toString() });
+            }
+        } else {
+            sendResponse({ success: false, error: "No video found" });
+        }
+        return true; // Keep channel open for async response
     }
     return true;
 });
