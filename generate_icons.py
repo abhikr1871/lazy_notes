@@ -3,7 +3,7 @@ from PIL import Image, ImageDraw
 def create_icon(size, path):
     img = Image.new('RGB', (size, size), color = (79, 70, 229)) # Indigo color
     d = ImageDraw.Draw(img)
-    d.text((size//4, size//4), "IA", fill=(255, 255, 255))
+    d.text((size//4, size//4), "LN", fill=(255, 255, 255))
     img.save(path)
 
 if __name__ == "__main__":
