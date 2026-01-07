@@ -3,7 +3,7 @@ import ContentEditable from 'react-contenteditable';
 import {
     Settings, Save, Bold, Italic, Underline, List,
     Heading1, Heading2, Link as LinkIcon, Image as ImageIcon,
-    Type, AlignLeft, Camera, FileText, Mic, Clock, Film, Moon, Sun, LogOut, User, UserPlus
+    Type, AlignLeft, Camera, FileText, Mic, Clock, Film, Moon, Sun, LogOut
 } from 'lucide-react';
 import { exportToPDF } from '../../utils/pdf';
 import { useNavigate } from 'react-router-dom';
@@ -169,12 +169,8 @@ function NoteEditor() {
                         </button>
                     ) : (
                         <div className="flex items-center space-x-1">
-                            <button onClick={() => navigate('/login')} className="flex items-center space-x-1 px-2.5 py-1.5 bg-slate-900 text-white hover:bg-slate-700 rounded-lg text-xs font-bold transition-colors shadow-lg shadow-slate-200">
-                                <User size={14} />
-                                <span className="hidden sm:inline">Login</span>
-                            </button>
-                            <button onClick={() => navigate('/signup')} className="flex items-center space-x-1 px-2.5 py-1.5 bg-pink-500 text-white hover:bg-pink-600 rounded-lg text-xs font-bold transition-colors shadow-lg shadow-pink-200">
-                                <UserPlus size={14} />
+                            <button onClick={() => navigate('/login')} className="px-3 py-1.5 bg-slate-900 text-white hover:bg-slate-700 rounded-lg text-xs font-bold transition-colors shadow-lg shadow-slate-200">
+                                Login
                             </button>
                         </div>
                     )}
@@ -188,12 +184,12 @@ function NoteEditor() {
                         <Settings size={18} />
                     </button>
                 </div>
-            </header>
+            </header >
 
             {/* Modern Toolbar */}
-            <div className="bg-white/80 backdrop-blur-sm px-3 py-2 border-b border-slate-100 flex flex-col gap-2 shrink-0 z-10">
+            < div className="bg-white/80 backdrop-blur-sm px-3 py-2 border-b border-slate-100 flex flex-col gap-2 shrink-0 z-10" >
                 {/* Row 1: Main Formatting */}
-                <div className="flex items-center justify-between">
+                < div className="flex items-center justify-between" >
                     <div className="flex items-center space-x-0.5">
                         <ToolbarBtn onClick={() => executeCommand('formatBlock', 'H1')} icon={Heading1} title="H1" />
                         <ToolbarBtn onClick={() => executeCommand('formatBlock', 'H2')} icon={Heading2} title="H2" />
@@ -210,10 +206,10 @@ function NoteEditor() {
                         <FileText size={14} />
                         <span>PDF</span>
                     </button>
-                </div>
+                </div >
 
                 {/* Row 2: Smart Tools */}
-                <div className="flex items-center space-x-2 overflow-x-auto scrollbar-hide pt-1">
+                < div className="flex items-center space-x-2 overflow-x-auto scrollbar-hide pt-1" >
                     <button onClick={handleSnap} className="flex-none flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white rounded-full text-xs font-bold shadow-md shadow-indigo-200 transition-all hover:scale-105 active:scale-95">
                         <Camera size={14} />
                         <span>Snap Frame</span>
@@ -233,11 +229,11 @@ function NoteEditor() {
                     <button onClick={handleTimestamp} className="p-2 rounded-full bg-white border border-slate-200 text-slate-500 hover:text-indigo-500 hover:border-indigo-200 transition-all" title="Timestamp">
                         <Clock size={16} />
                     </button>
-                </div>
-            </div>
+                </div >
+            </div >
 
             {/* Editor Canvas */}
-            <div className="flex-1 overflow-y-auto p-5" id="pdf-container">
+            < div className="flex-1 overflow-y-auto p-5" id="pdf-container" >
                 <ContentEditable
                     id="note-editor-content"
                     innerRef={editorRef}
@@ -250,17 +246,17 @@ function NoteEditor() {
             prose-a:text-indigo-600 prose-a:no-underline hover:prose-a:underline
             prose-img:rounded-xl prose-img:shadow-sm"
                 />
-            </div>
+            </div >
 
             {/* Floating Ask AI Button (Bottom) */}
-            <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 w-[90%] z-20">
+            < div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 w-[90%] z-20" >
                 <button className="w-full group relative flex items-center justify-center space-x-2 py-3 px-4 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl shadow-lg shadow-slate-200/50 transition-all hover:-translate-y-0.5 active:translate-y-0">
                     <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 opacity-20 group-hover:opacity-30 blur-md transition-opacity"></div>
                     <span className="text-lg">✨</span>
                     <span className="font-bold text-sm tracking-wide">Ask AI about this page</span>
                 </button>
-            </div>
-        </div>
+            </div >
+        </div >
     );
 }
 
