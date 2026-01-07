@@ -1,6 +1,12 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from services.ai_service import AIService
+from database import users_collection
+from models import UserCreate, UserLogin, Token
+from auth import get_password_hash, verify_password, create_access_token, get_current_user, ACCESS_TOKEN_EXPIRE_MINUTES
+from fastapi import FastAPI, Depends, HTTPException, status
+from datetime import timedelta
+from pymongo.errors import DuplicateKeyError
 
 app = FastAPI(title="IntelliAsk AI Backend")
 
@@ -40,3 +46,56 @@ async def chat(request: dict):
     # ai_response = ai_service.chat(user_message, context)
     
     return {"reply": ai_response}
+
+@app.post("/register", response_model=Token)
+async def register(user: UserCreate):
+    # Check if user exists
+    if users_collection.find_one({"email": user.email}):
+        raise HTTPException(status_code=400, detail="Email already registered")
+    if users_collection.find_one({"username": user.username}):
+        raise HTTPException(status_code=400, detail="Username already taken")
+    
+    hashed_password = get_password_hash(user.password)
+    user_dict = {
+        "username": user.username,
+        "email": user.email,
+        "password": hashed_password
+    }
+    
+    try:
+        users_collection.insert_one(user_dict)
+    except DuplicateKeyError:
+         raise HTTPException(status_code=400, detail="User already exists")
+
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user.username}, expires_delta=access_token_expires
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
+
+@app.post("/login", response_model=Token)
+async def login(user: UserLogin):
+    db_user = users_collection.find_one({"email": user.email})
+    if not db_user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    if not verify_password(user.password, db_user["password"]):
+         raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": db_user["username"]}, expires_delta=access_token_expires
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
+
+@app.get("/users/me")
+async def read_users_me(current_user = Depends(get_current_user)):
+    return {"username": current_user["username"], "email": current_user["email"]}
+

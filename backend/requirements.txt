@@ -5,3 +5,7 @@ python-dotenv
 requests
 google-generativeai
 openai
+pymongo
+passlib[bcrypt]
+python-jose[cryptography]
+python-multipart
