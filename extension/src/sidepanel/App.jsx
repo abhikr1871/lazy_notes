@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { MemoryRouter as Router, Routes, Route } from 'react-router-dom';
 import NoteEditor from '../pages/NoteEditor';
-import Login from '../pages/Login';
-import Signup from '../pages/Signup';
+import Login from '../pages/login';
+import Signup from '../pages/signup';
 import LeetCodeSidebar from './components/LeetCodeSidebar';
 
 function App() {
