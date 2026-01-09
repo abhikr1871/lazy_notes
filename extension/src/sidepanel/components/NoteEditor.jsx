@@ -3,31 +3,31 @@ import ContentEditable from 'react-contenteditable';
 import {
     Settings, Save, Bold, Italic, Underline, List,
     Heading1, Heading2, Link as LinkIcon, Image as ImageIcon,
-    Type, AlignLeft, Camera, FileText, Mic, Clock, Film, Moon, Sun, LogOut
+    Type, AlignLeft, Camera, FileText, Mic, Clock, Film, Moon, Sun, ArrowLeft
 } from 'lucide-react';
-import { exportToPDF } from '../../utils/pdf';
-import { useNavigate } from 'react-router-dom';
+import { exportToPDF } from '../../../utils/pdf';
 
-function NoteEditor() {
+function NoteEditor({ storageKey = 'lazyyNotesContent', onBack }) {
     const [html, setHtml] = useState("<h1>Enter Title</h1><p>Start typing your notes here...</p>");
     const [status, setStatus] = useState("");
     const [isListening, setIsListening] = useState(false);
     const [isAnimating, setIsAnimating] = useState(false);
-    const [isAuthenticated, setIsAuthenticated] = useState(false);
     const editorRef = useRef(null);
-    const navigate = useNavigate();
 
-    // Load saved notes and check auth
+    // Load saved notes
     useEffect(() => {
-        chrome.storage.local.get(['lazyyNotesContent'], (result) => {
-            if (result.lazyyNotesContent) {
-                setHtml(result.lazyyNotesContent);
+        chrome.storage.local.get([storageKey], (result) => {
+            if (result[storageKey]) {
+                setHtml(result[storageKey]);
+            } else {
+                // Reset to default if new key has no content, or keep existing state if switching keys?
+                // Better to check if we switched keys. For now, simple load is fine.
+                // But if we switch topics, we want to clear previous content if new one is empty?
+                // Ideally, if result is empty, set default.
+                setHtml("<h1>Enter Title</h1><p>Start typing your notes here...</p>");
             }
         });
-
-        const token = localStorage.getItem('token');
-        setIsAuthenticated(!!token);
-    }, []);
+    }, [storageKey]);
 
     const handleChange = (evt) => {
         setHtml(evt.target.value);
@@ -40,7 +40,7 @@ function NoteEditor() {
     };
 
     const handleSave = () => {
-        chrome.storage.local.set({ lazyyNotesContent: html }, () => {
+        chrome.storage.local.set({ [storageKey]: html }, () => {
             setStatus("Saved!");
             setTimeout(() => setStatus(""), 2000);
         });
@@ -48,14 +48,7 @@ function NoteEditor() {
 
     const handleLogoClick = () => {
         setIsAnimating(true);
-        setTimeout(() => setIsAnimating(false), 1500);
-    };
-
-    const handleLogout = () => {
-        localStorage.removeItem('token');
-        setIsAuthenticated(false);
-        setStatus("Logged out");
-        setTimeout(() => setStatus(""), 2000);
+        setTimeout(() => setIsAnimating(false), 1000); // 1s animation
     };
 
     const handleSnap = async () => {
@@ -132,60 +125,70 @@ function NoteEditor() {
             title={title}
             className={`p-1 rounded-lg transition-all duration-200 ${active ? 'bg-indigo-100 text-indigo-600' : 'text-slate-500 hover:bg-slate-100 hover:text-indigo-500'}`}
         >
-            <Icon size={18} strokeWidth={2} />
+            <Icon size={16} strokeWidth={2} />
         </button>
     );
 
     return (
-        <div className="h-full flex flex-col bg-slate-50/50 font-display selection:bg-indigo-100 text-slate-700">
+        <div className="h-full flex flex-col bg-slate-50/50 font-display selection:bg-indigo-100 text-slate-700 overflow-hidden">
             {/* Brand Header */}
-            <header className="bg-white/90 backdrop-blur-md px-5 py-3 border-b border-purple-50 flex justify-between items-center shrink-0 shadow-sm sticky top-0 z-50">
-                <div className="flex items-center space-x-3.5 group cursor-pointer" onClick={handleLogoClick}>
+            <header className="bg-white/90 backdrop-blur-md px-4 py-2 border-b border-purple-50 flex justify-between items-center shrink-0 shadow-sm sticky top-0 z-50">
+                <div className="flex items-center space-x-3 group cursor-pointer" onClick={handleLogoClick}>
+                    {onBack && (
+                        <button onClick={(e) => { e.stopPropagation(); onBack(); }} className="mr-1 p-1 hover:bg-slate-100 rounded-full text-slate-500 hover:text-indigo-600 transition-colors">
+                            <ArrowLeft size={20} />
+                        </button>
+                    )}
                     <div className="relative">
                         <div className={`absolute -inset-1 bg-gradient-to-r from-violet-600 to-pink-600 rounded-2xl blur opacity-25 transition duration-200 ${isAnimating ? 'opacity-75 scale-110' : 'group-hover:opacity-50'}`}></div>
                         <img
-                            src="icons/icon48.png"
+                            src="../icons/icon48.png"
                             alt="Logo"
-                            className={`relative w-10 h-10 rounded-xl shadow-sm transition-all duration-[1500ms] ease-in-out ${isAnimating ? 'scale-125 rotate-[1080deg]' : 'group-hover:scale-105'}`}
+                            className={`relative w-8 h-8 rounded-lg shadow-sm transition-all duration-1000 ease-in-out ${isAnimating ? 'scale-125 rotate-[1080deg]' : 'group-hover:scale-105'}`}
+                            onError={(e) => {
+                                // Fallback if relative path fails, try absolute from root if possible or just ignore
+                                // Since we moved to components/, the relative path to icons/ might be ../../icons/icon48.png
+                                // Original was 'icons/icon48.png' relative to 'src/sidepanel/App.jsx' which is effectively in 'src/sidepanel' (which is root of sidepanel execution context usually but mapped to public/icons?)
+                                // Actually, in Vite extension builds, commonly 'icons/icon48.png' refers to public folder.
+                                // If it was working before as 'icons/icon48.png', it should stay the same if the base URL matches. 
+                                // But if this is a React import, it's different.
+                                // In the original App.jsx: src="icons/icon48.png".
+                                // This usually implies it's serving from the root of the sidepanel HTML location.
+                                // Since sidepanel.html is at root of dist/ or src/, 'icons/' works.
+                                // So we probably don't need to change it if it's referenced by URL.
+                                e.target.src = "icons/icon48.png";
+                            }}
                         />
                     </div>
                     <div>
-                        <h1 className="font-black text-2xl tracking-tight text-transparent bg-clip-text bg-gradient-to-br from-violet-600 via-fuchsia-500 to-pink-500 drop-shadow-sm">
-                            Lazzy AI
+                        <h1 className="font-black text-xl tracking-tight text-transparent bg-clip-text bg-gradient-to-br from-violet-600 via-fuchsia-500 to-pink-500 drop-shadow-sm">
+                            Lazzy
                         </h1>
                         <div className="flex items-center space-x-1">
-                            <p className="text-[10px] text-slate-400 font-bold tracking-[0.2em] uppercase pl-0.5">COMPANION</p>
-                            <div className={`w-1.5 h-1.5 rounded-full bg-violet-500 ${isAnimating ? 'animate-bounce' : ''}`} style={{ animationDuration: '0.6s' }}></div>
-                            <div className={`w-1.5 h-1.5 rounded-full bg-pink-500 ${isAnimating ? 'animate-bounce' : ''}`} style={{ animationDuration: '0.7s', animationDelay: '0.1s' }}></div>
+                            <p className="text-[9px] text-slate-400 font-bold tracking-[0.2em] uppercase pl-0.5">AI Companion</p>
+                            <div className={`w-1 h-1 rounded-full bg-violet-500 ${isAnimating ? 'animate-bounce' : ''}`} style={{ animationDuration: '0.6s' }}></div>
+                            <div className={`w-1 h-1 rounded-full bg-pink-500 ${isAnimating ? 'animate-bounce' : ''}`} style={{ animationDuration: '0.7s', animationDelay: '0.1s' }}></div>
                         </div>
                     </div>
                 </div>
-                <div className="flex items-center space-x-1">
-                    <span className="text-xs text-indigo-600 font-medium mr-2 animate-fade-in">{status}</span>
+                <div className="flex items-center space-x-0.5">
+                    <span className="text-[10px] text-indigo-600 font-medium mr-1 animate-fade-in">{status}</span>
 
-                    {/* Auth Buttons */}
-                    {isAuthenticated ? (
-                        <button onClick={handleLogout} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="Logout">
-                            <LogOut size={18} />
+                    <button onClick={() => exportToPDF("note-editor-content")} className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="Export to PDF">
+                        <FileText size={16} />
+                    </button>
+
+                    <button onClick={handleSave} className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Save Notes">
+                        <Save size={16} />
+                    </button>
+
+                    {!onBack && (
+                        <button onClick={() => chrome.runtime.openOptionsPage()} className="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-lg transition-colors" title="Settings">
+                            <Settings size={16} />
                         </button>
-                    ) : (
-                        <div className="flex items-center space-x-1">
-                            <button onClick={() => navigate('/login')} className="px-3 py-1.5 bg-slate-900 text-white hover:bg-slate-700 rounded-lg text-xs font-bold transition-colors shadow-lg shadow-slate-200">
-                                Login
-                            </button>
-                        </div>
                     )}
-
-                    <div className="w-px h-5 bg-slate-200 mx-1"></div>
-
-                    <button onClick={handleSave} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
-                        <Save size={18} />
-                    </button>
-                    <button onClick={() => chrome.runtime.openOptionsPage()} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-lg transition-colors">
-                        <Settings size={18} />
-                    </button>
                 </div>
-            </header >
+            </header>
 
             {/* Modern Toolbar */}
             <div className="bg-white/80 backdrop-blur-sm px-2 py-1 border-b border-slate-100 flex flex-col gap-1 shrink-0 z-10">
@@ -271,16 +274,11 @@ function NoteEditor() {
                     <button onClick={handleTimestamp} className="p-1.5 rounded-full bg-white border border-slate-200 text-slate-500 hover:text-indigo-500 hover:border-indigo-200 transition-all" title="Timestamp">
                         <Clock size={14} />
                     </button>
-
-                    <button onClick={() => exportToPDF("note-editor-content")} className="flex-none flex items-center space-x-1.5 px-3 py-1.5 bg-slate-100 hover:bg-red-50 text-slate-600 hover:text-red-500 border border-transparent hover:border-red-100 rounded-full text-[10px] font-semibold transition-all">
-                        <FileText size={12} />
-                        <span>PDF</span>
-                    </button>
                 </div>
             </div>
 
             {/* Editor Canvas */}
-            < div className="flex-1 overflow-y-auto p-5" id="pdf-container" >
+            <div className="flex-1 overflow-y-auto p-5" id="pdf-container">
                 <ContentEditable
                     id="note-editor-content"
                     innerRef={editorRef}
@@ -293,10 +291,9 @@ function NoteEditor() {
             prose-a:text-indigo-600 prose-a:no-underline hover:prose-a:underline
             prose-img:rounded-xl prose-img:shadow-sm"
                 />
-            </div >
+            </div>
 
-
-        </div >
+        </div>
     );
 }
 
