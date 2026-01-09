@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import NoteEditor from './NoteEditor';
-import { Plus, ArrowRight, BookOpen, ArrowLeft, MoreVertical, Trash2 } from 'lucide-react';
+import { Plus, ArrowRight, BookOpen, ArrowLeft, MoreVertical, Trash2, FileText, Layout, ChevronRight } from 'lucide-react';
+import ContentEditable from 'react-contenteditable';
 
 const INITIAL_TOPICS = ["Arrays", "Strings", "Dynamic Programming", "Trees", "Graphs", "Math", "Hash Table", "Two Pointers", "Binary Search", "Stack", "Heap", "Greedy"];
 
@@ -14,13 +15,30 @@ const DIFFICULTY_COLORS = {
 function LeetCodeSidebar() {
     const [topics, setTopics] = useState(INITIAL_TOPICS);
     const [activeTopic, setActiveTopic] = useState(null);
+    const [activeSubtopic, setActiveSubtopic] = useState(null);
+    const [viewMode, setViewMode] = useState('list'); // 'list' (topics), 'subtopics', 'scenario', 'board'
     const [activeQuestion, setActiveQuestion] = useState(null); // { id, title, difficulty }
-    const [newTopic, setNewTopic] = useState("");
 
-    // Topic Data: { [topicName]: { sections: { [sectionName]: [ {id, title, difficulty, url} ] } } }
+    const [newTopic, setNewTopic] = useState("");
+    const [newSubtopic, setNewSubtopic] = useState("");
+
+    // Topic Data Structure:
+    // {
+    //   [topicName]: {
+    //      subtopics: {
+    //          [subtopicName]: {
+    //              scenario: "html string",
+    //              sections: { [sectionName]: [ {id, title, difficulty, url} ] }
+    //          }
+    //      }
+    //   }
+    // }
     const [topicData, setTopicData] = useState({});
     const [newSectionName, setNewSectionName] = useState("");
     const [isAddingSection, setIsAddingSection] = useState(false);
+
+    // Scenario State (Temp local state before save)
+    const [scenarioHtml, setScenarioHtml] = useState("");
 
     useEffect(() => {
         chrome.storage.local.get(['leetcode_topics', 'leetcode_data'], (res) => {
@@ -28,7 +46,28 @@ function LeetCodeSidebar() {
                 setTopics(res.leetcode_topics);
             }
             if (res.leetcode_data) {
-                setTopicData(res.leetcode_data);
+                // MIGRATION: Check for legacy structure (direct sections)
+                let migratedData = { ...res.leetcode_data };
+                let needsSave = false;
+
+                Object.keys(migratedData).forEach(topic => {
+                    if (migratedData[topic].sections && !migratedData[topic].subtopics) {
+                        // Move legacy sections to "General" subtopic
+                        migratedData[topic].subtopics = {
+                            "General": {
+                                scenario: "<h3>General Scenarios</h3><p>Overview for this topic...</p>",
+                                sections: migratedData[topic].sections
+                            }
+                        };
+                        delete migratedData[topic].sections;
+                        needsSave = true;
+                    }
+                });
+
+                setTopicData(migratedData);
+                if (needsSave) {
+                    chrome.storage.local.set({ leetcode_data: migratedData });
+                }
             }
         });
     }, []);
@@ -51,19 +90,59 @@ function LeetCodeSidebar() {
         setNewTopic("");
     };
 
+    const addSubtopic = () => {
+        if (!newSubtopic.trim() || !activeTopic) return;
+        const subtopicName = newSubtopic.trim();
+
+        const currentTopic = topicData[activeTopic] || { subtopics: {} };
+        const currentSubtopics = currentTopic.subtopics || {};
+
+        if (currentSubtopics[subtopicName]) {
+            alert("Subtopic already exists!");
+            return;
+        }
+
+        const updatedTopic = {
+            ...currentTopic,
+            subtopics: {
+                ...currentSubtopics,
+                [subtopicName]: { scenario: "<h3>Overview</h3><p>Write your scenario here...</p>", sections: {} }
+            }
+        };
+
+        const updatedTopicData = { ...topicData, [activeTopic]: updatedTopic };
+        saveTopicData(updatedTopicData);
+        setNewSubtopic("");
+    };
+
     const addSection = () => {
-        if (!newSectionName.trim() || !activeTopic) return;
-        const currentTopicData = topicData[activeTopic] || { sections: {} };
-        // We initialize with default sections if empty, but here we just add new one
-        const updatedSections = { ...currentTopicData.sections, [newSectionName]: [] };
-        const updatedTopicData = { ...topicData, [activeTopic]: { ...currentTopicData, sections: updatedSections } };
+        if (!newSectionName.trim() || !activeTopic || !activeSubtopic) return;
+
+        const currentTopic = topicData[activeTopic];
+        const currentSubtopic = currentTopic.subtopics[activeSubtopic];
+
+        const updatedSections = { ...currentSubtopic.sections, [newSectionName]: [] };
+
+        const updatedTopicData = {
+            ...topicData,
+            [activeTopic]: {
+                ...currentTopic,
+                subtopics: {
+                    ...currentTopic.subtopics,
+                    [activeSubtopic]: {
+                        ...currentSubtopic,
+                        sections: updatedSections
+                    }
+                }
+            }
+        };
+
         saveTopicData(updatedTopicData);
         setNewSectionName("");
         setIsAddingSection(false);
     };
 
     const addCurrentQuestion = async (sectionName) => {
-        // Get details from content script
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
         if (!tab) return;
 
@@ -76,29 +155,65 @@ function LeetCodeSidebar() {
             const { title, difficulty, url } = response;
             const question = { id: Date.now().toString(), title, difficulty, url };
 
-            const currentTopicData = topicData[activeTopic] || { sections: {} };
-            // Ensure section exists (though it should if we clicked add on it)
-            const currentSectionQuestions = currentTopicData.sections[sectionName] || [];
+            const currentTopic = topicData[activeTopic];
+            const currentSubtopic = currentTopic.subtopics[activeSubtopic];
+            const currentSectionQuestions = currentSubtopic.sections[sectionName] || [];
 
-            // Check duplicates
             if (currentSectionQuestions.some(q => q.title === title)) {
                 alert("Question already in this section!");
                 return;
             }
 
             const updatedSections = {
-                ...currentTopicData.sections,
+                ...currentSubtopic.sections,
                 [sectionName]: [...currentSectionQuestions, question]
             };
 
-            saveTopicData({ ...topicData, [activeTopic]: { ...currentTopicData, sections: updatedSections } });
+            const updatedTopicData = {
+                ...topicData,
+                [activeTopic]: {
+                    ...currentTopic,
+                    subtopics: {
+                        ...currentTopic.subtopics,
+                        [activeSubtopic]: {
+                            ...currentSubtopic,
+                            sections: updatedSections
+                        }
+                    }
+                }
+            };
+
+            saveTopicData(updatedTopicData);
         });
     };
 
-    const getSections = (topic) => {
-        const data = topicData[topic] || {};
-        const storedSections = data.sections || {};
-        // Ensure defaults always exist
+    const saveScenario = (html) => {
+        setScenarioHtml(html);
+        const currentTopic = topicData[activeTopic];
+        const currentSubtopic = currentTopic.subtopics[activeSubtopic];
+
+        const updatedTopicData = {
+            ...topicData,
+            [activeTopic]: {
+                ...currentTopic,
+                subtopics: {
+                    ...currentTopic.subtopics,
+                    [activeSubtopic]: {
+                        ...currentSubtopic,
+                        scenario: html
+                    }
+                }
+            }
+        };
+        saveTopicData(updatedTopicData);
+    };
+
+    const getSections = () => {
+        if (!activeTopic || !activeSubtopic || !topicData[activeTopic]) return {};
+        const subtopic = topicData[activeTopic].subtopics?.[activeSubtopic];
+        if (!subtopic) return {};
+
+        const storedSections = subtopic.sections || {};
         const defaults = ["Easy", "Medium", "Hard"];
         const merged = { ...storedSections };
         defaults.forEach(d => {
@@ -107,40 +222,88 @@ function LeetCodeSidebar() {
         return merged;
     };
 
+    const handleTopicClick = (topic) => {
+        setActiveTopic(topic);
+        setViewMode('subtopics');
+    };
+
+    const handleSubtopicClick = (subtopic) => {
+        setActiveSubtopic(subtopic);
+        // Load scenario content
+        const content = topicData[activeTopic]?.subtopics?.[subtopic]?.scenario || "";
+        setScenarioHtml(content);
+        setViewMode('scenario');
+    };
+
     // --- Views ---
 
-    // 1. Question Editor
+    // 1. Question Editor (Deepest View)
     if (activeQuestion) {
         return (
             <NoteEditor
-                storageKey={`leetcode_note_${activeTopic}_${activeQuestion.id}`}
+                storageKey={`leetcode_note_${activeTopic}_${activeSubtopic}_${activeQuestion.id}`}
                 onBack={() => setActiveQuestion(null)}
             />
         );
     }
 
-    // 2. Topic Detail Board
-    if (activeTopic) {
-        const sections = getSections(activeTopic);
+    // 2. Scenario View
+    if (viewMode === 'scenario' && activeTopic && activeSubtopic) {
+        return (
+            <div className="h-full flex flex-col bg-slate-50 font-sans text-slate-700">
+                <header className="bg-white px-4 py-3 border-b border-slate-200 flex items-center justify-between shrink-0 shadow-sm">
+                    <div className="flex items-center gap-3">
+                        <button onClick={() => setViewMode('subtopics')} className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-indigo-600 transition-colors">
+                            <ArrowLeft size={20} />
+                        </button>
+                        <div>
+                            <h1 className="font-display font-bold text-lg text-slate-800 leading-none">{activeSubtopic}</h1>
+                            <p className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold mt-0.5">Scenario & Logic</p>
+                        </div>
+                    </div>
+                    <button
+                        onClick={() => setViewMode('board')}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition-colors shadow-indigo-100 shadow-md"
+                    >
+                        <span>Questions</span>
+                        <ArrowRight size={14} />
+                    </button>
+                </header>
+
+                <div className="flex-1 overflow-y-auto p-5">
+                    <div className="bg-white rounded-xl shadow-sm border border-slate-200 min-h-full p-6">
+                        <ContentEditable
+                            html={scenarioHtml}
+                            disabled={false}
+                            onChange={(e) => saveScenario(e.target.value)}
+                            className="outline-none prose prose-sm prose-slate max-w-none 
+                            prose-headings:font-bold prose-headings:text-slate-800 
+                            prose-p:text-slate-600 prose-p:leading-relaxed placeholder:text-slate-300"
+                        />
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    // 3. Questions Board View
+    if (viewMode === 'board' && activeTopic && activeSubtopic) {
+        const sections = getSections();
         return (
             <div className="h-full flex flex-col bg-slate-50 font-sans text-slate-700">
                 <header className="bg-white px-4 py-3 border-b border-slate-200 flex items-center gap-3 shrink-0 shadow-sm">
-                    <button onClick={() => setActiveTopic(null)} className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-indigo-600 transition-colors">
+                    <button onClick={() => setViewMode('scenario')} className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-indigo-600 transition-colors">
                         <ArrowLeft size={20} />
                     </button>
                     <div>
-                        <h1 className="font-display font-bold text-lg text-slate-800 leading-none">{activeTopic}</h1>
-                        <p className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold mt-0.5">Board</p>
+                        <h1 className="font-display font-bold text-lg text-slate-800 leading-none">{activeSubtopic}</h1>
+                        <p className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold mt-0.5">Question Board</p>
                     </div>
                 </header>
 
                 <div className="flex-1 overflow-y-auto p-4 space-y-6">
-                    {/* Add Section Button (only visible if we want custom sections, maybe toggle?) */}
-                    {/* For now let's just list sections */}
-
                     {Object.entries(sections).map(([name, questions]) => {
                         let colorClass = DIFFICULTY_COLORS[name] || DIFFICULTY_COLORS.Custom;
-                        // Override color based on name if it matches standard difficulties
                         if (name === "Easy") colorClass = DIFFICULTY_COLORS.Easy;
                         if (name === "Medium") colorClass = DIFFICULTY_COLORS.Medium;
                         if (name === "Hard") colorClass = DIFFICULTY_COLORS.Hard;
@@ -178,7 +341,6 @@ function LeetCodeSidebar() {
                         );
                     })}
 
-                    {/* Add Custom Section UI */}
                     <div className="pt-4 border-t border-slate-200">
                         {!isAddingSection ? (
                             <button onClick={() => setIsAddingSection(true)} className="flex items-center gap-2 text-xs font-semibold text-slate-500 hover:text-indigo-600 transition-colors w-full justify-center py-2 border border-dashed border-slate-300 rounded-xl hover:border-indigo-300 hover:bg-slate-50/50">
@@ -205,7 +367,73 @@ function LeetCodeSidebar() {
         );
     }
 
-    // 3. Main Topic List (Same aesthetic as before)
+    // 4. Subtopic List View
+    if (viewMode === 'subtopics' && activeTopic) {
+        const currentTopic = topicData[activeTopic] || {};
+        const subtopicsList = currentTopic.subtopics ? Object.keys(currentTopic.subtopics) : [];
+
+        return (
+            <div className="h-full flex flex-col bg-slate-50/50 font-sans text-slate-700">
+                <header className="bg-white px-4 py-3 border-b border-slate-200 flex items-center gap-3 shrink-0 shadow-sm sticky top-0 z-10">
+                    <button onClick={() => { setActiveTopic(null); setViewMode('list'); }} className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-indigo-600 transition-colors">
+                        <ArrowLeft size={20} />
+                    </button>
+                    <div>
+                        <h1 className="font-display font-bold text-lg text-slate-800 leading-none">{activeTopic}</h1>
+                        <p className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold mt-0.5">Select Subtopic</p>
+                    </div>
+                </header>
+
+                <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+                    {subtopicsList.length === 0 && (
+                        <div className="text-center py-10 opacity-60">
+                            <Layout className="w-12 h-12 mx-auto text-slate-300 mb-2" />
+                            <p className="text-sm text-slate-500">No subtopics yet</p>
+                            <p className="text-xs text-slate-400">Add one below to get started</p>
+                        </div>
+                    )}
+
+                    {subtopicsList.map(sub => (
+                        <div
+                            key={sub}
+                            onClick={() => handleSubtopicClick(sub)}
+                            className="group bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:shadow-md hover:border-indigo-200 cursor-pointer transition-all flex items-center justify-between"
+                        >
+                            <div className="flex items-center gap-3">
+                                <div className="bg-indigo-50 text-indigo-600 p-2 rounded-lg">
+                                    <FileText size={18} />
+                                </div>
+                                <span className="font-semibold text-slate-700 group-hover:text-indigo-700 transition-colors">{sub}</span>
+                            </div>
+                            <ChevronRight size={18} className="text-slate-300 group-hover:text-indigo-400 transition-colors" />
+                        </div>
+                    ))}
+                </div>
+
+                <div className="p-4 shrink-0 bg-gradient-to-t from-slate-50 to-transparent">
+                    <div className="bg-white p-1 rounded-xl shadow-lg shadow-slate-200/50 border border-slate-100 flex gap-1">
+                        <input
+                            type="text"
+                            value={newSubtopic}
+                            onChange={(e) => setNewSubtopic(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && addSubtopic()}
+                            placeholder="New Subtopic (e.g. BFS)..."
+                            className="flex-1 bg-transparent px-3 py-2 text-sm font-medium text-slate-700 placeholder:text-slate-400 focus:outline-none"
+                        />
+                        <button
+                            onClick={addSubtopic}
+                            disabled={!newSubtopic.trim()}
+                            className="bg-slate-900 hover:bg-indigo-600 text-white p-2 rounded-lg transition-all duration-300 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-indigo-200 group"
+                        >
+                            <Plus size={18} strokeWidth={2.5} className="group-hover:rotate-90 transition-transform duration-300" />
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    // 5. Main Topic List (Default)
     return (
         <div className="h-full flex flex-col bg-slate-50/50 font-sans text-slate-700">
             <header className="px-5 py-4 flex items-center gap-3 shrink-0">
@@ -222,7 +450,7 @@ function LeetCodeSidebar() {
                 {topics.map(topic => (
                     <div
                         key={topic}
-                        onClick={() => setActiveTopic(topic)}
+                        onClick={() => handleTopicClick(topic)}
                         className="group bg-white p-3.5 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md hover:border-indigo-100 cursor-pointer transition-all duration-300 flex justify-between items-center relative overflow-hidden"
                     >
                         <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-indigo-500 to-purple-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
