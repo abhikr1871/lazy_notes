@@ -295,14 +295,7 @@ function NoteEditor() {
                 />
             </div >
 
-            {/* Floating Ask AI Button (Bottom) */}
-            < div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 w-[90%] z-20" >
-                <button className="w-full group relative flex items-center justify-center space-x-2 py-3 px-4 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl shadow-lg shadow-slate-200/50 transition-all hover:-translate-y-0.5 active:translate-y-0">
-                    <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 opacity-20 group-hover:opacity-30 blur-md transition-opacity"></div>
-                    <span className="text-lg">✨</span>
-                    <span className="font-bold text-sm tracking-wide">Ask AI about this page</span>
-                </button>
-            </div >
+
         </div >
     );
 }
