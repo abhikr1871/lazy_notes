@@ -270,17 +270,11 @@ function LeetCodeSidebar() {
                     </button>
                 </header>
 
-                <div className="flex-1 overflow-y-auto p-5">
-                    <div className="bg-white rounded-xl shadow-sm border border-slate-200 min-h-full p-6">
-                        <ContentEditable
-                            html={scenarioHtml}
-                            disabled={false}
-                            onChange={(e) => saveScenario(e.target.value)}
-                            className="outline-none prose prose-sm prose-slate max-w-none 
-                            prose-headings:font-bold prose-headings:text-slate-800 
-                            prose-p:text-slate-600 prose-p:leading-relaxed placeholder:text-slate-300"
-                        />
-                    </div>
+                <div className="flex-1 overflow-hidden relative">
+                    <NoteEditor
+                        storageKey={`leetcode_scenario_${activeTopic}_${activeSubtopic}`}
+                        placeholder="Write your overall scenario and logic here (drag & drop images supported)..."
+                    />
                 </div>
             </div>
         );
