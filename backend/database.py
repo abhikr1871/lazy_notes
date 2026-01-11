@@ -10,3 +10,5 @@ DB_NAME = os.getenv("DB_NAME", "lazy_notes")
 client = MongoClient(MONGO_URI)
 db = client[DB_NAME]
 users_collection = db["users"]
+trees_collection = db["trees"]
+notes_collection = db["notes"]

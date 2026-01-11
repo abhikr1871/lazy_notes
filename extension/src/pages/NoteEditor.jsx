@@ -19,18 +19,32 @@ function NoteEditor({ storageKey = 'lazyyNotesContent', onBack, placeholder }) {
 
     // Load saved notes and check auth
     useEffect(() => {
+        const token = localStorage.getItem('token');
+        setIsAuthenticated(!!token);
+
+        // 1. Try Local Load
         chrome.storage.local.get([storageKey], (result) => {
             if (result[storageKey]) {
                 setHtml(result[storageKey]);
-            } else if (placeholder) {
-                // If new and we have a placeholder (like for Scenarios), maybe start empty or with title?
-                // Let's keep default title but empty body? Or just default.
-                // If it's a scenario, the default "Enter Title" is fine.
             }
         });
 
-        const token = localStorage.getItem('token');
-        setIsAuthenticated(!!token);
+        // 2. Try Cloud Load (If authenticated and using a specific key)
+        if (token && storageKey !== 'lazyyNotesContent') {
+            fetch(`http://localhost:8000/notes/${storageKey}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.content) {
+                        setHtml(data.content);
+                        // Update local cache
+                        chrome.storage.local.set({ [storageKey]: data.content });
+                    }
+                })
+                .catch(err => console.error("Cloud note fetch error:", err));
+        }
+
     }, [storageKey]);
 
     const handleChange = (evt) => {
@@ -44,10 +58,28 @@ function NoteEditor({ storageKey = 'lazyyNotesContent', onBack, placeholder }) {
     };
 
     const handleSave = () => {
+        // Save Local
         chrome.storage.local.set({ [storageKey]: html }, () => {
             setStatus("Saved!");
             setTimeout(() => setStatus(""), 2000);
         });
+
+        // Save Cloud
+        const token = localStorage.getItem('token');
+        if (token && storageKey !== 'lazyyNotesContent') {
+            fetch('http://localhost:8000/notes', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ note_id: storageKey, content: html })
+            })
+                .then(res => {
+                    if (res.ok) setStatus("Cloud Saved!");
+                })
+                .catch(err => console.error("Cloud save error:", err));
+        }
     };
 
     const handleLogoClick = () => {

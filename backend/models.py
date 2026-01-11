@@ -21,3 +21,11 @@ class Token(BaseModel):
 
 class TokenData(BaseModel):
     username: Optional[str] = None
+
+class TreeSync(BaseModel):
+    topics: list
+    data: dict
+
+class NoteSync(BaseModel):
+    note_id: str
+    content: str
