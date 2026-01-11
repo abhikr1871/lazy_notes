@@ -4,10 +4,12 @@ from services.ai_service import AIService
 # from ai_service import AIService
 from database import users_collection
 from models import UserCreate, UserLogin, Token
+from models import UserCreate, UserLogin, Token, TreeSync, NoteSync
 from auth import get_password_hash, verify_password, create_access_token, get_current_user, ACCESS_TOKEN_EXPIRE_MINUTES
 from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File
 from datetime import timedelta
-from pymongo.errors import DuplicateKeyError
+from api.routes import note_routes # Placeholder if we move to routes folder later
+from database import users_collection, trees_collection, notes_collection
 from services.s3_service import S3Service
 import uuid
 
@@ -40,6 +42,48 @@ async def upload_image(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail="Failed to upload image")
         
     return {"url": url}
+
+    return {"url": url}
+
+# --- Cloud Sync Routes ---
+
+@app.post("/leetcode/tree")
+async def sync_tree(tree: TreeSync, current_user = Depends(get_current_user)):
+    user_id = current_user["username"] # Using username as ID for simplicity
+    trees_collection.update_one(
+        {"user_id": user_id},
+        {"$set": {"topics": tree.topics, "data": tree.data}},
+        upsert=True
+    )
+    return {"status": "synced"}
+
+@app.get("/leetcode/tree")
+async def get_tree(current_user = Depends(get_current_user)):
+    user_id = current_user["username"]
+    doc = trees_collection.find_one({"user_id": user_id})
+    if doc:
+        # Convert _id to str if needed or just exclude it
+        doc.pop("_id", None)
+        return doc
+    return {"topics": [], "data": {}}
+
+@app.post("/notes")
+async def sync_note(note: NoteSync, current_user = Depends(get_current_user)):
+    user_id = current_user["username"]
+    notes_collection.update_one(
+        {"user_id": user_id, "note_id": note.note_id},
+        {"$set": {"content": note.content}},
+        upsert=True
+    )
+    return {"status": "saved"}
+
+@app.get("/notes/{note_id}")
+async def get_note(note_id: str, current_user = Depends(get_current_user)):
+    user_id = current_user["username"]
+    doc = notes_collection.find_one({"user_id": user_id, "note_id": note_id})
+    if doc:
+        return {"content": doc["content"]}
+    return {"content": None}
 
 @app.post("/summarize")
 def summarize():

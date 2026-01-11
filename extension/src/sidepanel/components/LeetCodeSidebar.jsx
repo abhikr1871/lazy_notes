@@ -39,42 +39,63 @@ function LeetCodeSidebar() {
 
     // Scenario State (Temp local state before save)
     const [scenarioHtml, setScenarioHtml] = useState("");
+    const [isSyncing, setIsSyncing] = useState(false);
 
+    // Initial Load & Sync
     useEffect(() => {
+        const token = localStorage.getItem('token');
+
+        // 1. Load Local First (Fast)
         chrome.storage.local.get(['leetcode_topics', 'leetcode_data'], (res) => {
-            if (res.leetcode_topics && Array.isArray(res.leetcode_topics) && res.leetcode_topics.length > 0) {
-                setTopics(res.leetcode_topics);
-            }
-            if (res.leetcode_data) {
-                // MIGRATION: Check for legacy structure (direct sections)
-                let migratedData = { ...res.leetcode_data };
-                let needsSave = false;
-
-                Object.keys(migratedData).forEach(topic => {
-                    if (migratedData[topic].sections && !migratedData[topic].subtopics) {
-                        // Move legacy sections to "General" subtopic
-                        migratedData[topic].subtopics = {
-                            "General": {
-                                scenario: "<h3>General Scenarios</h3><p>Overview for this topic...</p>",
-                                sections: migratedData[topic].sections
-                            }
-                        };
-                        delete migratedData[topic].sections;
-                        needsSave = true;
-                    }
-                });
-
-                setTopicData(migratedData);
-                if (needsSave) {
-                    chrome.storage.local.set({ leetcode_data: migratedData });
-                }
-            }
+            if (res.leetcode_topics?.length) setTopics(res.leetcode_topics);
+            if (res.leetcode_data) setTopicData(res.leetcode_data);
         });
+
+        // 2. Fetch Cloud (Source of Truth) if Logged In
+        if (token) {
+            fetch('http://localhost:8000/leetcode/tree', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.topics && data.topics.length > 0) {
+                        setTopics(data.topics);
+                        setTopicData(data.data || {});
+                        // Update local storage to match cloud
+                        chrome.storage.local.set({
+                            leetcode_topics: data.topics,
+                            leetcode_data: data.data || {}
+                        });
+                    }
+                })
+                .catch(err => console.error("Cloud fetch error:", err));
+        }
     }, []);
+
+    const syncTreeToCloud = (currentTopics, currentData) => {
+        const token = localStorage.getItem('token');
+        if (!token) return;
+
+        setIsSyncing(true);
+        fetch('http://localhost:8000/leetcode/tree', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ topics: currentTopics, data: currentData })
+        })
+            .then(() => setIsSyncing(false))
+            .catch(err => {
+                console.error("Sync error:", err);
+                setIsSyncing(false);
+            });
+    };
 
     const saveTopicData = (newData) => {
         setTopicData(newData);
         chrome.storage.local.set({ leetcode_data: newData });
+        syncTreeToCloud(topics, newData);
     };
 
     const addTopic = () => {
@@ -88,6 +109,7 @@ function LeetCodeSidebar() {
         setTopics(updated);
         chrome.storage.local.set({ leetcode_topics: updated });
         setNewTopic("");
+        syncTreeToCloud(updated, topicData);
     };
 
     const addSubtopic = () => {
