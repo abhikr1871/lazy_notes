@@ -1,12 +1,15 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from services.ai_service import AIService
+# from ai_service import AIService
 from database import users_collection
 from models import UserCreate, UserLogin, Token
 from auth import get_password_hash, verify_password, create_access_token, get_current_user, ACCESS_TOKEN_EXPIRE_MINUTES
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File
 from datetime import timedelta
 from pymongo.errors import DuplicateKeyError
+from services.s3_service import S3Service
+import uuid
 
 app = FastAPI(title="IntelliAsk AI Backend")
 
@@ -20,10 +23,23 @@ app.add_middleware(
 )
 
 ai_service = AIService()
+s3_service = S3Service()
 
 @app.get("/")
 def health_check():
     return {"status": "ok", "message": "IntelliAsk AI Backend is running"}
+
+@app.post("/upload/image")
+async def upload_image(file: UploadFile = File(...)):
+    # Generate unique filename
+    extension = file.filename.split(".")[-1]
+    unique_filename = f"{uuid.uuid4()}.{extension}"
+    
+    url = s3_service.upload_file(file, unique_filename)
+    if not url:
+        raise HTTPException(status_code=500, detail="Failed to upload image")
+        
+    return {"url": url}
 
 @app.post("/summarize")
 def summarize():

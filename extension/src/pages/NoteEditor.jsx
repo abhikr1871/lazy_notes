@@ -126,6 +126,51 @@ function NoteEditor() {
         });
     };
 
+    const handleImageUpload = async (file) => {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        try {
+            setStatus("Uploading image...");
+            const response = await fetch('http://localhost:8000/upload/image', {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) throw new Error('Upload failed');
+
+            const data = await response.json();
+            const imgHtml = `<img src="${data.url}" style="max-width: 100%; border-radius: 8px; margin: 10px 0; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);" /><br/>`;
+            document.execCommand('insertHTML', false, imgHtml);
+            setStatus("Image uploaded!");
+            setTimeout(() => setStatus(""), 2000);
+        } catch (error) {
+            console.error('Error uploading image:', error);
+            setStatus("Upload failed");
+            setTimeout(() => setStatus(""), 2000);
+        }
+    };
+
+    const handlePaste = (e) => {
+        const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+        for (let i = 0; i < items.length; i++) {
+            if (items[i].type.indexOf('image') !== -1) {
+                e.preventDefault();
+                const file = items[i].getAsFile();
+                handleImageUpload(file);
+                return;
+            }
+        }
+    };
+
+    const handleDrop = (e) => {
+        e.preventDefault();
+        const files = e.dataTransfer.files;
+        if (files.length > 0 && files[0].type.startsWith('image/')) {
+            handleImageUpload(files[0]);
+        }
+    };
+
     const ToolbarBtn = ({ onClick, icon: Icon, title, active }) => (
         <button
             onClick={onClick}
@@ -137,7 +182,11 @@ function NoteEditor() {
     );
 
     return (
-        <div className="h-full flex flex-col bg-slate-50/50 font-display selection:bg-indigo-100 text-slate-700">
+        <div
+            className="h-full flex flex-col bg-slate-50/50 font-display selection:bg-indigo-100 text-slate-700"
+            onDrop={handleDrop}
+            onDragOver={(e) => e.preventDefault()}
+        >
             {/* Brand Header */}
             <header className="bg-white/90 backdrop-blur-md px-5 py-3 border-b border-purple-50 flex justify-between items-center shrink-0 shadow-sm sticky top-0 z-50">
                 <div className="flex items-center space-x-3.5 group cursor-pointer" onClick={handleLogoClick}>
@@ -287,6 +336,7 @@ function NoteEditor() {
                     html={html}
                     disabled={false}
                     onChange={handleChange}
+                    onPaste={handlePaste}
                     className="outline-none min-h-full prose prose-sm prose-slate max-w-none 
             prose-headings:font-bold prose-headings:text-slate-800 
             prose-p:text-slate-600 prose-p:leading-relaxed
