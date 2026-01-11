@@ -8,7 +8,7 @@ import {
 import { exportToPDF } from '../../utils/pdf';
 import { useNavigate } from 'react-router-dom';
 
-function NoteEditor() {
+function NoteEditor({ storageKey = 'lazyyNotesContent', onBack, placeholder }) {
     const [html, setHtml] = useState("<h1>Enter Title</h1><p>Start typing your notes here...</p>");
     const [status, setStatus] = useState("");
     const [isListening, setIsListening] = useState(false);
@@ -19,15 +19,19 @@ function NoteEditor() {
 
     // Load saved notes and check auth
     useEffect(() => {
-        chrome.storage.local.get(['lazyyNotesContent'], (result) => {
-            if (result.lazyyNotesContent) {
-                setHtml(result.lazyyNotesContent);
+        chrome.storage.local.get([storageKey], (result) => {
+            if (result[storageKey]) {
+                setHtml(result[storageKey]);
+            } else if (placeholder) {
+                // If new and we have a placeholder (like for Scenarios), maybe start empty or with title?
+                // Let's keep default title but empty body? Or just default.
+                // If it's a scenario, the default "Enter Title" is fine.
             }
         });
 
         const token = localStorage.getItem('token');
         setIsAuthenticated(!!token);
-    }, []);
+    }, [storageKey]);
 
     const handleChange = (evt) => {
         setHtml(evt.target.value);
@@ -40,7 +44,7 @@ function NoteEditor() {
     };
 
     const handleSave = () => {
-        chrome.storage.local.set({ lazyyNotesContent: html }, () => {
+        chrome.storage.local.set({ [storageKey]: html }, () => {
             setStatus("Saved!");
             setTimeout(() => setStatus(""), 2000);
         });
