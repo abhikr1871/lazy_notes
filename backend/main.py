@@ -8,7 +8,6 @@ from models import UserCreate, UserLogin, Token, TreeSync, NoteSync
 from auth import get_password_hash, verify_password, create_access_token, get_current_user, ACCESS_TOKEN_EXPIRE_MINUTES
 from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File
 from datetime import timedelta
-from api.routes import note_routes # Placeholder if we move to routes folder later
 from database import users_collection, trees_collection, notes_collection
 from services.s3_service import S3Service
 import uuid
@@ -41,8 +40,6 @@ async def upload_image(file: UploadFile = File(...)):
     if not url:
         raise HTTPException(status_code=500, detail="Failed to upload image")
         
-    return {"url": url}
-
     return {"url": url}
 
 # --- Cloud Sync Routes ---

@@ -8,7 +8,7 @@ import {
 import { exportToPDF } from '../../utils/pdf';
 import { useNavigate } from 'react-router-dom';
 
-function NoteEditor({ storageKey = 'lazyyNotesContent', onBack, placeholder }) {
+function NoteEditor({ storageKey = 'lazyyNotesContent', onBack, placeholder, simpleMode = false }) {
     const [html, setHtml] = useState("<h1>Enter Title</h1><p>Start typing your notes here...</p>");
     const [status, setStatus] = useState("");
     const [isListening, setIsListening] = useState(false);
@@ -26,6 +26,10 @@ function NoteEditor({ storageKey = 'lazyyNotesContent', onBack, placeholder }) {
         chrome.storage.local.get([storageKey], (result) => {
             if (result[storageKey]) {
                 setHtml(result[storageKey]);
+            } else if (placeholder && !result[storageKey]) {
+                // If simpleMode/placeholder is present and no saved content, use placeholder or empty (for custom placeholder via css)
+                // Actually sticking to default behavior but maybe clearing if simpleMode?
+                if (simpleMode) setHtml("");
             }
         });
 
@@ -45,7 +49,18 @@ function NoteEditor({ storageKey = 'lazyyNotesContent', onBack, placeholder }) {
                 .catch(err => console.error("Cloud note fetch error:", err));
         }
 
-    }, [storageKey]);
+    }, [storageKey, simpleMode]); // Added simpleMode dep
+
+    // Auto-Save Effect for Simple Mode
+    useEffect(() => {
+        if (!simpleMode) return;
+
+        const timer = setTimeout(() => {
+            handleSave();
+        }, 1000); // 1-second debounce
+
+        return () => clearTimeout(timer);
+    }, [html, simpleMode]);
 
     const handleChange = (evt) => {
         setHtml(evt.target.value);
@@ -60,8 +75,10 @@ function NoteEditor({ storageKey = 'lazyyNotesContent', onBack, placeholder }) {
     const handleSave = () => {
         // Save Local
         chrome.storage.local.set({ [storageKey]: html }, () => {
-            setStatus("Saved!");
-            setTimeout(() => setStatus(""), 2000);
+            if (!simpleMode) { // Only show status flash in normal mode (simple mode shows quiet state?)
+                setStatus("Saved!");
+                setTimeout(() => setStatus(""), 2000);
+            }
         });
 
         // Save Cloud
@@ -76,7 +93,7 @@ function NoteEditor({ storageKey = 'lazyyNotesContent', onBack, placeholder }) {
                 body: JSON.stringify({ note_id: storageKey, content: html })
             })
                 .then(res => {
-                    if (res.ok) setStatus("Cloud Saved!");
+                    // Silent success for cloud
                 })
                 .catch(err => console.error("Cloud save error:", err));
         }
@@ -167,7 +184,7 @@ function NoteEditor({ storageKey = 'lazyyNotesContent', onBack, placeholder }) {
         formData.append('file', file);
 
         try {
-            setStatus("Uploading image...");
+            if (!simpleMode) setStatus("Uploading image...");
             const response = await fetch('http://localhost:8000/upload/image', {
                 method: 'POST',
                 body: formData
@@ -178,12 +195,16 @@ function NoteEditor({ storageKey = 'lazyyNotesContent', onBack, placeholder }) {
             const data = await response.json();
             const imgHtml = `<img src="${data.url}" style="max-width: 100%; border-radius: 8px; margin: 10px 0; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);" /><br/>`;
             document.execCommand('insertHTML', false, imgHtml);
-            setStatus("Image uploaded!");
-            setTimeout(() => setStatus(""), 2000);
+            if (!simpleMode) {
+                setStatus("Image uploaded!");
+                setTimeout(() => setStatus(""), 2000);
+            }
         } catch (error) {
             console.error('Error uploading image:', error);
-            setStatus("Upload failed");
-            setTimeout(() => setStatus(""), 2000);
+            if (!simpleMode) {
+                setStatus("Upload failed");
+                setTimeout(() => setStatus(""), 2000);
+            }
         }
     };
 
@@ -223,60 +244,65 @@ function NoteEditor({ storageKey = 'lazyyNotesContent', onBack, placeholder }) {
             onDrop={handleDrop}
             onDragOver={(e) => e.preventDefault()}
         >
-            {/* Brand Header */}
-            <header className="bg-white/90 backdrop-blur-md px-5 py-3 border-b border-purple-50 flex justify-between items-center shrink-0 shadow-sm sticky top-0 z-50">
-                <div className="flex items-center space-x-3.5 group cursor-pointer" onClick={handleLogoClick}>
-                    <div className="relative">
-                        <div className={`absolute -inset-1 bg-gradient-to-r from-violet-600 to-pink-600 rounded-2xl blur opacity-25 transition duration-200 ${isAnimating ? 'opacity-75 scale-110' : 'group-hover:opacity-50'}`}></div>
-                        <img
-                            src="icons/icon48.png"
-                            alt="Logo"
-                            className={`relative w-10 h-10 rounded-xl shadow-sm transition-all duration-[1500ms] ease-in-out ${isAnimating ? 'scale-125 rotate-[1080deg]' : 'group-hover:scale-105'}`}
-                        />
-                    </div>
-                    <div>
-                        <h1 className="font-black text-2xl tracking-tight text-transparent bg-clip-text bg-gradient-to-br from-violet-600 via-fuchsia-500 to-pink-500 drop-shadow-sm">
-                            Lazzy AI
-                        </h1>
-                        <div className="flex items-center space-x-1">
-                            <p className="text-[10px] text-slate-400 font-bold tracking-[0.2em] uppercase pl-0.5">COMPANION</p>
-                            <div className={`w-1.5 h-1.5 rounded-full bg-violet-500 ${isAnimating ? 'animate-bounce' : ''}`} style={{ animationDuration: '0.6s' }}></div>
-                            <div className={`w-1.5 h-1.5 rounded-full bg-pink-500 ${isAnimating ? 'animate-bounce' : ''}`} style={{ animationDuration: '0.7s', animationDelay: '0.1s' }}></div>
+            {/* Brand Header - HIDDEN IN SIMPLE MODE */}
+            {!simpleMode && (
+                <header className="bg-white/90 backdrop-blur-md px-5 py-3 border-b border-purple-50 flex justify-between items-center shrink-0 shadow-sm sticky top-0 z-50">
+                    <div className="flex items-center space-x-3.5 group cursor-pointer" onClick={handleLogoClick}>
+                        <div className="relative">
+                            <div className={`absolute -inset-1 bg-gradient-to-r from-violet-600 to-pink-600 rounded-2xl blur opacity-25 transition duration-200 ${isAnimating ? 'opacity-75 scale-110' : 'group-hover:opacity-50'}`}></div>
+                            <img
+                                src="icons/icon48.png"
+                                alt="Logo"
+                                className={`relative w-10 h-10 rounded-xl shadow-sm transition-all duration-[1500ms] ease-in-out ${isAnimating ? 'scale-125 rotate-[1080deg]' : 'group-hover:scale-105'}`}
+                            />
+                        </div>
+                        <div>
+                            <h1 className="font-black text-2xl tracking-tight text-transparent bg-clip-text bg-gradient-to-br from-violet-600 via-fuchsia-500 to-pink-500 drop-shadow-sm">
+                                Lazzy AI
+                            </h1>
+                            <div className="flex items-center space-x-1">
+                                <p className="text-[10px] text-slate-400 font-bold tracking-[0.2em] uppercase pl-0.5">COMPANION</p>
+                                <div className={`w-1.5 h-1.5 rounded-full bg-violet-500 ${isAnimating ? 'animate-bounce' : ''}`} style={{ animationDuration: '0.6s' }}></div>
+                                <div className={`w-1.5 h-1.5 rounded-full bg-pink-500 ${isAnimating ? 'animate-bounce' : ''}`} style={{ animationDuration: '0.7s', animationDelay: '0.1s' }}></div>
+                            </div>
                         </div>
                     </div>
-                </div>
-                <div className="flex items-center space-x-1">
-                    <span className="text-xs text-indigo-600 font-medium mr-2 animate-fade-in">{status}</span>
+                    <div className="flex items-center space-x-1">
+                        <span className="text-xs text-indigo-600 font-medium mr-2 animate-fade-in">{status}</span>
 
-                    {/* Auth Buttons */}
-                    {isAuthenticated ? (
-                        <button onClick={handleLogout} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="Logout">
-                            <LogOut size={18} />
-                        </button>
-                    ) : (
-                        <div className="flex items-center space-x-1">
-                            <button onClick={() => navigate('/login')} className="px-3 py-1.5 bg-slate-900 text-white hover:bg-slate-700 rounded-lg text-xs font-bold transition-colors shadow-lg shadow-slate-200">
-                                Login
+                        {/* Auth Buttons */}
+                        {isAuthenticated ? (
+                            <button onClick={handleLogout} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="Logout">
+                                <LogOut size={18} />
                             </button>
-                        </div>
-                    )}
+                        ) : (
+                            <div className="flex items-center space-x-1">
+                                <button onClick={() => navigate('/login')} className="px-3 py-1.5 bg-slate-900 text-white hover:bg-slate-700 rounded-lg text-xs font-bold transition-colors shadow-lg shadow-slate-200">
+                                    Login
+                                </button>
+                            </div>
+                        )}
 
-                    <div className="w-px h-5 bg-slate-200 mx-1"></div>
+                        <div className="w-px h-5 bg-slate-200 mx-1"></div>
 
-                    <button onClick={handleSave} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
-                        <Save size={18} />
-                    </button>
-                    <button onClick={() => chrome.runtime.openOptionsPage()} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-lg transition-colors">
-                        <Settings size={18} />
-                    </button>
-                </div>
-            </header >
+                        <button onClick={handleSave} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
+                            <Save size={18} />
+                        </button>
+                        <button onClick={() => chrome.runtime.openOptionsPage()} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-lg transition-colors">
+                            <Settings size={18} />
+                        </button>
+                    </div>
+                </header >
+            )}
 
             {/* Modern Toolbar */}
-            <div className="bg-white/80 backdrop-blur-sm px-2 py-1 border-b border-slate-100 flex flex-col gap-1 shrink-0 z-10">
+            <div className={`bg-white/80 backdrop-blur-sm px-2 py-1 border-b border-slate-100 flex flex-col gap-1 shrink-0 z-10 ${simpleMode ? 'bg-slate-50' : ''}`}>
                 {/* Row 1: Extensive Formatting */}
                 <div className="flex items-center justify-between overflow-x-auto scrollbar-hide pb-0.5 gap-1">
 
+                    {simpleMode && (
+                        <span className="text-xs text-indigo-600 font-medium mr-2 animate-fade-in">{status}</span>
+                    )}
 
                     {/* Fonts Control */}
                     <div className="flex items-center space-x-0.5">
@@ -328,40 +354,46 @@ function NoteEditor({ storageKey = 'lazyyNotesContent', onBack, placeholder }) {
 
                     <div className="w-px h-4 bg-slate-200 mx-1"></div>
 
-                    <button onClick={() => executeCommand('subscript')} className="p-1 text-slate-500 hover:text-indigo-600 font-serif text-xs" title="Subscript">x₂</button>
-                    <button onClick={() => executeCommand('superscript')} className="p-1 text-slate-500 hover:text-indigo-600 font-serif text-xs" title="Superscript">x²</button>
+                    {!simpleMode && (
+                        <>
+                            <button onClick={() => executeCommand('subscript')} className="p-1 text-slate-500 hover:text-indigo-600 font-serif text-xs" title="Subscript">x₂</button>
+                            <button onClick={() => executeCommand('superscript')} className="p-1 text-slate-500 hover:text-indigo-600 font-serif text-xs" title="Superscript">x²</button>
+                        </>
+                    )}
 
 
                 </div>
 
 
-                {/* Row 2: Smart Tools */}
-                <div className="flex items-center space-x-2 overflow-x-auto scrollbar-hide pt-1">
-                    <button onClick={handleSnap} className="flex-none flex items-center space-x-1.5 px-3 py-1.5 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white rounded-full text-[10px] font-bold shadow-md shadow-indigo-200 transition-all hover:scale-105 active:scale-95">
-                        <Camera size={12} />
-                        <span>Snap Frame</span>
-                    </button>
+                {/* Row 2: Smart Tools - HIDDEN IN SIMPLE MODE */}
+                {!simpleMode && (
+                    <div className="flex items-center space-x-2 overflow-x-auto scrollbar-hide pt-1">
+                        <button onClick={handleSnap} className="flex-none flex items-center space-x-1.5 px-3 py-1.5 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white rounded-full text-[10px] font-bold shadow-md shadow-indigo-200 transition-all hover:scale-105 active:scale-95">
+                            <Camera size={12} />
+                            <span>Snap Frame</span>
+                        </button>
 
-                    <button onClick={() => setAutoSnap(!autoSnap)} className={`flex-none flex items-center space-x-1 px-2.5 py-1.5 rounded-full text-[10px] font-semibold border transition-all ${autoSnap ? 'bg-purple-100 border-purple-200 text-purple-700' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}`}>
-                        <Film size={12} />
-                        <span>AutoSnap</span>
-                    </button>
+                        <button onClick={() => setAutoSnap(!autoSnap)} className={`flex-none flex items-center space-x-1 px-2.5 py-1.5 rounded-full text-[10px] font-semibold border transition-all ${autoSnap ? 'bg-purple-100 border-purple-200 text-purple-700' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}`}>
+                            <Film size={12} />
+                            <span>AutoSnap</span>
+                        </button>
 
-                    <div className="w-px h-4 bg-slate-200 mx-0.5"></div>
+                        <div className="w-px h-4 bg-slate-200 mx-0.5"></div>
 
-                    <button onClick={handleMic} className={`p-1.5 rounded-full transition-all ${isListening ? 'bg-red-50 text-red-500 ring-2 ring-red-100 animate-pulse' : 'bg-white border border-slate-200 text-slate-500 hover:text-indigo-500 hover:border-indigo-200'}`} title="Dictate">
-                        <Mic size={14} />
-                    </button>
+                        <button onClick={handleMic} className={`p-1.5 rounded-full transition-all ${isListening ? 'bg-red-50 text-red-500 ring-2 ring-red-100 animate-pulse' : 'bg-white border border-slate-200 text-slate-500 hover:text-indigo-500 hover:border-indigo-200'}`} title="Dictate">
+                            <Mic size={14} />
+                        </button>
 
-                    <button onClick={handleTimestamp} className="p-1.5 rounded-full bg-white border border-slate-200 text-slate-500 hover:text-indigo-500 hover:border-indigo-200 transition-all" title="Timestamp">
-                        <Clock size={14} />
-                    </button>
+                        <button onClick={handleTimestamp} className="p-1.5 rounded-full bg-white border border-slate-200 text-slate-500 hover:text-indigo-500 hover:border-indigo-200 transition-all" title="Timestamp">
+                            <Clock size={14} />
+                        </button>
 
-                    <button onClick={() => exportToPDF("note-editor-content")} className="flex-none flex items-center space-x-1.5 px-3 py-1.5 bg-slate-100 hover:bg-red-50 text-slate-600 hover:text-red-500 border border-transparent hover:border-red-100 rounded-full text-[10px] font-semibold transition-all">
-                        <FileText size={12} />
-                        <span>PDF</span>
-                    </button>
-                </div>
+                        <button onClick={() => exportToPDF("note-editor-content")} className="flex-none flex items-center space-x-1.5 px-3 py-1.5 bg-slate-100 hover:bg-red-50 text-slate-600 hover:text-red-500 border border-transparent hover:border-red-100 rounded-full text-[10px] font-semibold transition-all">
+                            <FileText size={12} />
+                            <span>PDF</span>
+                        </button>
+                    </div>
+                )}
             </div>
 
             {/* Editor Canvas */}
@@ -373,6 +405,7 @@ function NoteEditor({ storageKey = 'lazyyNotesContent', onBack, placeholder }) {
                     disabled={false}
                     onChange={handleChange}
                     onPaste={handlePaste}
+                    placeholder={placeholder}
                     className="outline-none min-h-full prose prose-sm prose-slate max-w-none 
             prose-headings:font-bold prose-headings:text-slate-800 
             prose-p:text-slate-600 prose-p:leading-relaxed

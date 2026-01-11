@@ -296,6 +296,7 @@ function LeetCodeSidebar() {
                     <NoteEditor
                         storageKey={`leetcode_scenario_${activeTopic}_${activeSubtopic}`}
                         placeholder="Write your overall scenario and logic here (drag & drop images supported)..."
+                        simpleMode={true}
                     />
                 </div>
             </div>
