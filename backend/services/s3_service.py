@@ -2,6 +2,9 @@ import boto3
 import os
 from botocore.exceptions import NoCredentialsError
 from fastapi import UploadFile
+from dotenv import load_dotenv
+
+load_dotenv()
 
 class S3Service:
     def __init__(self):
@@ -11,6 +14,8 @@ class S3Service:
         self.region = os.getenv("AWS_REGION")
 
         if not all([self.access_key, self.secret_key, self.bucket_name]):
+             print(f"DEBUG: CWD={os.getcwd()}")
+             print(f"DEBUG ENV: AccessKey={'Found' if self.access_key else 'Missing'}, Secret={'Found' if self.secret_key else 'Missing'}, Bucket={'Found' if self.bucket_name else 'Missing'}, Region={'Found' if self.region else 'Missing'}")
              print("AWS Credentials missing. S3 Service will fail.")
 
         self.s3_client = boto3.client(
@@ -41,3 +46,13 @@ class S3Service:
         except Exception as e:
             print(f"S3 Upload Error: {e}")
             return None
+
+    def check_connection(self):
+        try:
+            # Check if bucket exists and we have access
+            self.s3_client.head_bucket(Bucket=self.bucket_name)
+            print("✅ AWS successfully connected")
+            return True
+        except Exception as e:
+            print(f"❌ AWS Connection Failed: {e}")
+            return False

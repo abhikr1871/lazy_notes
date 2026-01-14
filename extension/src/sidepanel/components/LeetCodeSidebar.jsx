@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import NoteEditor from './NoteEditor';
 import { Plus, ArrowRight, BookOpen, ArrowLeft, MoreVertical, Trash2, FileText, Layout, ChevronRight } from 'lucide-react';
 import ContentEditable from 'react-contenteditable';
@@ -40,10 +41,17 @@ function LeetCodeSidebar() {
     // Scenario State (Temp local state before save)
     const [scenarioHtml, setScenarioHtml] = useState("");
     const [isSyncing, setIsSyncing] = useState(false);
+    const navigate = useNavigate();
 
     // Initial Load & Sync
     useEffect(() => {
         const token = localStorage.getItem('token');
+        if (!token) {
+            navigate('/login');
+            return;
+        }
+
+        // 1. Load Local First (Fast)
 
         // 1. Load Local First (Fast)
         chrome.storage.local.get(['leetcode_topics', 'leetcode_data'], (res) => {
