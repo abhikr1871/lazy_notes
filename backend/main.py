@@ -2,13 +2,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from services.ai_service import AIService
 # from ai_service import AIService
-from database import users_collection
-from models import UserCreate, UserLogin, Token
-from models import UserCreate, UserLogin, Token, TreeSync, NoteSync
 from auth import get_password_hash, verify_password, create_access_token, get_current_user, ACCESS_TOKEN_EXPIRE_MINUTES
 from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File
 from datetime import timedelta
 from database import users_collection, trees_collection, notes_collection
+from models import UserCreate, UserLogin, Token, TreeSync, NoteSync
 from services.s3_service import S3Service
 import uuid
 
@@ -25,6 +23,7 @@ app.add_middleware(
 
 ai_service = AIService()
 s3_service = S3Service()
+s3_service.check_connection()
 
 @app.get("/")
 def health_check():

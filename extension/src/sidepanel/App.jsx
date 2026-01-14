@@ -14,7 +14,15 @@ function App() {
     }, []);
 
     if (context === 'leetcode') {
-        return <LeetCodeSidebar />;
+        return (
+            <Router>
+                <Routes>
+                    <Route path="/" element={<LeetCodeSidebar />} />
+                    <Route path="/login" element={<Login />} />
+                    <Route path="/signup" element={<Signup />} />
+                </Routes>
+            </Router>
+        );
     }
 
     return (
