@@ -6,31 +6,57 @@ const IS_YOUTUBE = window.location.hostname.includes("youtube.com");
 const IS_LEETCODE = window.location.hostname.includes("leetcode.com");
 
 // --- YouTube Sidebar Logic ---
+// --- YouTube Sidebar Logic ---
 function toggleYouTubeSidebar() {
-    const secondary = document.querySelector("#secondary");
-    if (!secondary) {
-        alert("Could not find YouTube sidebar (secondary column).");
+    console.log("Lazzy: Toggle button clicked");
+
+    let container = document.getElementById("lazyy-youtube-container");
+    if (container) {
+        container.classList.toggle("lazyy-visible");
         return;
     }
 
-    let iframe = document.getElementById("lazyy-sidebar-yt");
-    if (iframe) {
-        iframe.style.display = iframe.style.display === "none" ? "block" : "none";
-    } else {
-        iframe = document.createElement("iframe");
-        iframe.id = "lazyy-sidebar-yt";
-        iframe.src = chrome.runtime.getURL("sidepanel.html");
-        iframe.style.cssText = `
-            width: 100%; 
-            height: 600px; 
-            border: none; 
-            border-radius: 12px; 
-            margin-bottom: 16px; 
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-            z-index: 999;
-        `;
-        secondary.insertBefore(iframe, secondary.firstChild);
-    }
+    // Create Fixed Container (Overlay) - Independent of YouTube Layout
+    container = document.createElement("div");
+    container.id = "lazyy-youtube-container";
+    container.style.cssText = `
+        position: fixed; top: 0; right: -450px; width: 400px; height: 100vh;
+        background: white; z-index: 2147483647; transition: right 0.3s ease;
+        box-shadow: -5px 0 15px rgba(0,0,0,0.1); border-left: 1px solid #eee;
+        display: flex; flex-direction: column;
+    `;
+
+    // Close Button
+    const closeBtn = document.createElement("button");
+    closeBtn.innerHTML = "✕";
+    closeBtn.style.cssText = `
+        position: absolute; left: -40px; top: 80px; width: 40px; height: 40px;
+        background: white; border: 1px solid #eee; border-right: none;
+        border-radius: 8px 0 0 8px; cursor: pointer; font-weight: bold; color: #666;
+        box-shadow: -2px 0 5px rgba(0,0,0,0.05); display: flex; align-items: center; justify-content: center;
+        font-size: 18px;
+    `;
+    closeBtn.onclick = () => container.classList.remove("lazyy-visible");
+
+    // Iframe
+    const iframe = document.createElement("iframe");
+    iframe.src = chrome.runtime.getURL("sidepanel.html");
+    iframe.style.cssText = "width: 100%; height: 100%; border: none;";
+
+    container.appendChild(closeBtn);
+    container.appendChild(iframe);
+    document.body.appendChild(container);
+
+    // Visibility Style
+    const style = document.createElement("style");
+    style.textContent = `
+        #lazyy-youtube-container.lazyy-visible { right: 0 !important; }
+    `;
+    document.head.appendChild(style);
+
+    // Trigger animation
+    setTimeout(() => container.classList.add("lazyy-visible"), 10);
+    console.log("Lazzy: Fixed sidebar created and shown");
 }
 
 function injectYouTubeButton() {
@@ -47,9 +73,19 @@ function injectYouTubeButton() {
             font-weight: 600; cursor: pointer; font-size: 13px;
             box-shadow: 0 4px 6px -1px rgba(99, 102, 241, 0.3);
             transition: all 0.2s ease; display: inline-flex; align-items: center; gap: 6px;
+            z-index: 10000; pointer-events: auto;
         `;
-        btn.onclick = toggleYouTubeSidebar;
+
+        // Use addEventListener for better reliability and stopPropagation to prevent YouTube stealing the click
+        btn.addEventListener("click", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log("Lazzy: Button CLICKED event fired");
+            toggleYouTubeSidebar();
+        });
+
         target.appendChild(btn);
+        console.log("Lazzy: Button injected into #owner");
     }
 }
 
@@ -224,16 +260,30 @@ function injectLeetCodeButton() {
 }
 
 // --- Initialization ---
-const observer = new MutationObserver(() => {
-    if (IS_YOUTUBE && window.location.href.includes("youtube.com/watch")) {
+// --- Initialization ---
+
+function runChecks() {
+    const currentUrl = window.location.href;
+
+    // YouTube Logic
+    if (IS_YOUTUBE && currentUrl.includes("youtube.com/watch")) {
         injectYouTubeButton();
     }
-    if (IS_LEETCODE && window.location.href.includes("leetcode.com/problems")) {
+
+    // LeetCode Logic
+    if (IS_LEETCODE && currentUrl.includes("leetcode.com/problems")) {
         injectLeetCodeButton();
     }
-});
+}
 
-observer.observe(document.body, { childList: true, subtree: true });
+// 1. Initial Check
+runChecks();
+
+// 2. Periodic Safety Check (Unnoticeable performance impact, handles all SPA edge cases)
+setInterval(runChecks, 1000);
+
+// 3. YouTube Specific Event (Optimization for faster button appearance)
+window.addEventListener("yt-navigate-finish", runChecks);
 
 // Listen for messages from extension components
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -257,7 +307,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 sendResponse({
                     success: true,
                     imageData: canvas.toDataURL("image/jpeg"),
-                    time: new Date(video.currentTime * 1000).toISOString().substring(14, 19)
+                    time: new Date(video.currentTime * 1000).toISOString().substring(14, 19),
+                    ended: video.ended
                 });
             } catch (e) {
                 sendResponse({ success: false, error: e.toString() });

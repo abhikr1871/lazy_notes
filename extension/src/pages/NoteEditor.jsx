@@ -3,7 +3,7 @@ import ContentEditable from 'react-contenteditable';
 import {
     Settings, Save, Bold, Italic, Underline, List,
     Heading1, Heading2, Link as LinkIcon, Image as ImageIcon,
-    Type, AlignLeft, Camera, FileText, Mic, Clock, Film, Moon, Sun, LogOut
+    Type, AlignLeft, Camera, FileText, Mic, Clock, Film, Moon, Sun, LogOut, X
 } from 'lucide-react';
 import { exportToPDF } from '../../utils/pdf';
 import { useNavigate } from 'react-router-dom';
@@ -58,6 +58,21 @@ function NoteEditor() {
         setTimeout(() => setStatus(""), 2000);
     };
 
+    const [autoSnapInterval, setAutoSnapInterval] = useState(null);
+    const [showSnapOptions, setShowSnapOptions] = useState(false);
+
+    useEffect(() => {
+        let intervalId;
+        if (autoSnapInterval) {
+            intervalId = setInterval(() => {
+                handleSnap();
+            }, autoSnapInterval);
+        }
+        return () => {
+            if (intervalId) clearInterval(intervalId);
+        };
+    }, [autoSnapInterval]);
+
     const handleSnap = async () => {
         try {
             chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
@@ -65,11 +80,22 @@ function NoteEditor() {
                 chrome.tabs.sendMessage(tabs[0].id, { action: "captureVideoFrame" }, async (response) => {
                     if (chrome.runtime.lastError || !response || !response.success) {
                         console.log("Video capture failed, fallback to tab.");
-                        const dataUrl = await chrome.tabs.captureVisibleTab(null, { format: "png" });
-                        const imgTag = `<br/><img src="${dataUrl}" style="max-width: 100%; border-radius: 8px; margin: 10px 0;" /><br/>`;
-                        setHtml(prev => prev + imgTag);
+                        // Only fallback if not auto-snapping (to avoid spamming screenshots of nothing)
+                        if (!autoSnapInterval) {
+                            const dataUrl = await chrome.tabs.captureVisibleTab(null, { format: "png" });
+                            const imgTag = `<br/><img src="${dataUrl}" style="max-width: 100%; border-radius: 8px; margin: 10px 0;" /><br/>`;
+                            setHtml(prev => prev + imgTag);
+                        }
                     } else {
-                        const { imageData, time } = response;
+                        const { imageData, time, ended } = response;
+
+                        // Auto-Off Logic
+                        if (ended && autoSnapInterval) {
+                            setAutoSnapInterval(null);
+                            setStatus("Video finished");
+                            return;
+                        }
+
                         const content = `<br/><div style="color: #6366f1; font-weight: bold;">⏱️ ${time}</div><img src="${imageData}" style="max-width: 100%; border-radius: 12px; margin: 5px 0 15px 0; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);" /><br/>`;
                         setHtml(prev => prev + content);
                     }
@@ -79,8 +105,6 @@ function NoteEditor() {
             console.error(err);
         }
     };
-
-    const [autoSnap, setAutoSnap] = useState(false);
 
     const handleLink = () => {
         const url = prompt("Enter URL:");
@@ -137,35 +161,31 @@ function NoteEditor() {
     );
 
     return (
-        <div className="h-full flex flex-col bg-slate-50/50 font-display selection:bg-indigo-100 text-slate-700">
-            {/* Brand Header */}
-            <header className="bg-white/90 backdrop-blur-md px-5 py-3 border-b border-purple-50 flex justify-between items-center shrink-0 shadow-sm sticky top-0 z-50">
-                <div className="flex items-center space-x-3.5 group cursor-pointer" onClick={handleLogoClick}>
+        <div className="h-full w-full bg-slate-50 relative flex flex-col">
+            {/* Header */}
+            <header className="bg-white px-4 py-3 border-b border-slate-200 flex justify-between items-center shrink-0 shadow-sm z-50">
+                <div className="flex items-center space-x-3 group cursor-pointer" onClick={handleLogoClick}>
                     <div className="relative">
-                        <div className={`absolute -inset-1 bg-gradient-to-r from-violet-600 to-pink-600 rounded-2xl blur opacity-25 transition duration-200 ${isAnimating ? 'opacity-75 scale-110' : 'group-hover:opacity-50'}`}></div>
                         <img
                             src="icons/icon48.png"
                             alt="Logo"
-                            className={`relative w-10 h-10 rounded-xl shadow-sm transition-all duration-[1500ms] ease-in-out ${isAnimating ? 'scale-125 rotate-[1080deg]' : 'group-hover:scale-105'}`}
+                            className="w-10 h-10 rounded-lg shadow-sm"
+                            onError={(e) => { e.target.src = "icons/icon48.png"; }}
                         />
                     </div>
                     <div>
-                        <h1 className="font-black text-2xl tracking-tight text-transparent bg-clip-text bg-gradient-to-br from-violet-600 via-fuchsia-500 to-pink-500 drop-shadow-sm">
-                            Lazzy AI
+                        <h1 className="font-bold text-lg text-slate-800 leading-none">
+                            Lazzy
                         </h1>
-                        <div className="flex items-center space-x-1">
-                            <p className="text-[10px] text-slate-400 font-bold tracking-[0.2em] uppercase pl-0.5">COMPANION</p>
-                            <div className={`w-1.5 h-1.5 rounded-full bg-violet-500 ${isAnimating ? 'animate-bounce' : ''}`} style={{ animationDuration: '0.6s' }}></div>
-                            <div className={`w-1.5 h-1.5 rounded-full bg-pink-500 ${isAnimating ? 'animate-bounce' : ''}`} style={{ animationDuration: '0.7s', animationDelay: '0.1s' }}></div>
-                        </div>
+                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">AI Companion</p>
                     </div>
                 </div>
                 <div className="flex items-center space-x-1">
-                    <span className="text-xs text-indigo-600 font-medium mr-2 animate-fade-in">{status}</span>
+                    <span className="text-xs text-indigo-600 font-medium mr-2">{status}</span>
 
                     {/* Auth Buttons */}
                     {isAuthenticated ? (
-                        <button onClick={handleLogout} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="Logout">
+                        <button onClick={handleLogout} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="Logout">
                             <LogOut size={18} />
                         </button>
                     ) : (
@@ -178,17 +198,21 @@ function NoteEditor() {
 
                     <div className="w-px h-5 bg-slate-200 mx-1"></div>
 
-                    <button onClick={handleSave} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
+                    <button onClick={handleSave} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
                         <Save size={18} />
                     </button>
-                    <button onClick={() => chrome.runtime.openOptionsPage()} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-lg transition-colors">
+                    <button onClick={() => chrome.runtime.openOptionsPage()} className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-lg transition-colors">
                         <Settings size={18} />
                     </button>
+                    {/* Close Button */}
+                    <button onClick={() => window.close()} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer pointer-events-auto" title="Close">
+                        <X size={20} />
+                    </button>
                 </div>
-            </header >
+            </header>
 
-            {/* Modern Toolbar */}
-            <div className="bg-white/80 backdrop-blur-sm px-2 py-1 border-b border-slate-100 flex flex-col gap-1 shrink-0 z-10">
+            {/* Toolbar */}
+            <div className="bg-white px-2 py-2 border-b border-slate-200 flex flex-col gap-2 shrink-0 z-40" onClick={() => showSnapOptions && setShowSnapOptions(false)}>
                 {/* Row 1: Extensive Formatting */}
                 <div className="flex items-center justify-between overflow-x-auto scrollbar-hide pb-0.5 gap-1">
 
@@ -196,12 +220,32 @@ function NoteEditor() {
                     {/* Fonts Control */}
                     <div className="flex items-center space-x-0.5">
                         <select onChange={(e) => executeCommand('fontName', e.target.value)} className="w-20 text-[10px] bg-transparent border-none outline-none text-slate-600 font-medium cursor-pointer hover:text-indigo-600 truncate">
-                            <option value="Poppins" style={{ fontFamily: 'Poppins, sans-serif' }}>Poppins</option>
+                            {/* Handwritten / Notebook */}
+                            <option value="Caveat" style={{ fontFamily: 'Caveat, cursive' }}>Caveat</option>
+                            <option value="Patrick Hand" style={{ fontFamily: '"Patrick Hand", cursive' }}>Patrick Hand</option>
+                            <option value="Kalam" style={{ fontFamily: 'Kalam, cursive' }}>Kalam</option>
+                            <option value="Indie Flower" style={{ fontFamily: '"Indie Flower", cursive' }}>Indie Flower</option>
+                            <option value="Architects Daughter" style={{ fontFamily: '"Architects Daughter", cursive' }}>Architects Daughter</option>
+
+                            {/* Serif / Academic */}
+                            <option value="Merriweather" style={{ fontFamily: 'Merriweather, serif' }}>Merriweather</option>
+                            <option value="Libre Baskerville" style={{ fontFamily: '"Libre Baskerville", serif' }}>Libre Baskerville</option>
+                            <option value="Crimson Text" style={{ fontFamily: '"Crimson Text", serif' }}>Crimson Text</option>
+                            <option value="Playfair Display" style={{ fontFamily: '"Playfair Display", serif' }}>Playfair Display</option>
+                            <option value="EB Garamond" style={{ fontFamily: '"EB Garamond", serif' }}>EB Garamond</option>
+
+                            {/* Mono / Tech */}
+                            <option value="JetBrains Mono" style={{ fontFamily: '"JetBrains Mono", monospace' }}>JetBrains Mono</option>
+                            <option value="Fira Code" style={{ fontFamily: '"Fira Code", monospace' }}>Fira Code</option>
+                            <option value="IBM Plex Mono" style={{ fontFamily: '"IBM Plex Mono", monospace' }}>IBM Plex Mono</option>
+
+                            {/* Aesthetic / Creative */}
+                            <option value="DM Serif Display" style={{ fontFamily: '"DM Serif Display", serif' }}>DM Serif Display</option>
+                            <option value="Space Grotesk" style={{ fontFamily: '"Space Grotesk", sans-serif' }}>Space Grotesk</option>
+
+                            {/* Existing Default Options */}
                             <option value="Inter" style={{ fontFamily: 'Inter, sans-serif' }}>Inter</option>
                             <option value="Roboto" style={{ fontFamily: 'Roboto, sans-serif' }}>Roboto</option>
-                            <option value="Open Sans" style={{ fontFamily: '"Open Sans", sans-serif' }}>Open Sans</option>
-                            <option value="Lato" style={{ fontFamily: 'Lato, sans-serif' }}>Lato</option>
-                            <option value="Montserrat" style={{ fontFamily: 'Montserrat, sans-serif' }}>Montserrat</option>
                             <option value="Arial" style={{ fontFamily: 'Arial, sans-serif' }}>Arial</option>
                             <option value="Times New Roman" style={{ fontFamily: '"Times New Roman", serif' }}>Serif</option>
                             <option value="Courier New" style={{ fontFamily: '"Courier New", monospace' }}>Mono</option>
@@ -257,10 +301,31 @@ function NoteEditor() {
                         <span>Snap Frame</span>
                     </button>
 
-                    <button onClick={() => setAutoSnap(!autoSnap)} className={`flex-none flex items-center space-x-1 px-2.5 py-1.5 rounded-full text-[10px] font-semibold border transition-all ${autoSnap ? 'bg-purple-100 border-purple-200 text-purple-700' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}`}>
-                        <Film size={12} />
-                        <span>AutoSnap</span>
-                    </button>
+                    {/* AutoSnap Native Select (Fixes Overflow & Matches Font Selector) */}
+                    <div className={`flex-none relative flex items-center rounded-full border transition-all group ${autoSnapInterval
+                        ? 'bg-purple-600 border-purple-600 text-white shadow-md shadow-purple-200'
+                        : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                        }`}>
+                        <Film size={12} className={`ml-2.5 absolute pointer-events-none ${autoSnapInterval ? 'text-white' : 'text-slate-500'}`} />
+                        <select
+                            value={autoSnapInterval || ""}
+                            onChange={(e) => {
+                                const val = e.target.value;
+                                setAutoSnapInterval(val ? parseInt(val) : null);
+                            }}
+                            className={`pl-7 pr-3 py-1.5 bg-transparent border-none outline-none appearance-none text-[10px] font-semibold cursor-pointer w-auto min-w-[90px] ${autoSnapInterval ? 'text-white' : 'text-slate-600'}`}
+                            title="AutoSnap Interval"
+                        >
+                            {!autoSnapInterval && <option value="" className="text-slate-600 bg-white">AutoSnap</option>}
+                            {autoSnapInterval && <option value="" className="text-slate-600 bg-white">Stop Snap</option>}
+                            <option value="10000" className="text-slate-600 bg-white">10 Seconds</option>
+                            <option value="30000" className="text-slate-600 bg-white">30 Seconds</option>
+                            <option value="60000" className="text-slate-600 bg-white">1 Minute</option>
+                            <option value="300000" className="text-slate-600 bg-white">5 Minutes</option>
+                        </select>
+                        {/* Custom Arrow to match design */}
+                        <div className={`pointer-events-none absolute right-2 text-[8px] ${autoSnapInterval ? 'text-white/80' : 'text-slate-400'}`}>▼</div>
+                    </div>
 
                     <div className="w-px h-4 bg-slate-200 mx-0.5"></div>
 
@@ -295,8 +360,10 @@ function NoteEditor() {
                 />
             </div >
 
+        </div>
 
-        </div >
+
+
     );
 }
 

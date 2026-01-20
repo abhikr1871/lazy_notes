@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { ArrowLeft } from 'lucide-react';
 
 function Signup() {
     const [username, setUsername] = useState('');
@@ -49,6 +50,14 @@ function Signup() {
                 <div className="absolute top-[10%] left-[10%] w-[40%] h-[40%] bg-pink-200/40 rounded-full blur-[100px]" />
                 <div className="absolute bottom-[10%] right-[10%] w-[40%] h-[40%] bg-violet-200/40 rounded-full blur-[100px]" />
             </div>
+
+            {/* Back Button */}
+            <button
+                onClick={() => navigate('/')}
+                className="fixed top-6 left-6 z-50 p-2 bg-white/80 backdrop-blur-md border border-white/50 rounded-full text-slate-500 hover:text-pink-600 hover:bg-white shadow-sm transition-all group"
+            >
+                <ArrowLeft size={20} className="group-hover:-translate-x-0.5 transition-transform" />
+            </button>
 
             <div className="w-full max-w-sm bg-white/80 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/50 p-8 z-10 relative">
 
