@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { MemoryRouter as Router, Routes, Route } from 'react-router-dom';
 import NoteEditor from '../pages/NoteEditor';
-import Login from '../pages/login';
-import Signup from '../pages/signup';
+import Login from '../pages/Login';
+import Signup from '../pages/Signup';
 import LeetCodeSidebar from './components/LeetCodeSidebar';
+import CodeforcesSidebar from './components/CodeforcesSidebar';
 
 function App() {
     const [context, setContext] = useState(null);
@@ -15,6 +16,10 @@ function App() {
 
     if (context === 'leetcode') {
         return <LeetCodeSidebar />;
+    }
+
+    if (context === 'codeforces') {
+        return <CodeforcesSidebar />;
     }
 
     return (

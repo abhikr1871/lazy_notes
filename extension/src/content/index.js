@@ -4,6 +4,7 @@ console.log("Lazzy Content Script Loaded");
 // --- Platform Detection ---
 const IS_YOUTUBE = window.location.hostname.includes("youtube.com");
 const IS_LEETCODE = window.location.hostname.includes("leetcode.com");
+const IS_CODEFORCES = window.location.hostname.includes("codeforces.com");
 
 // --- YouTube Sidebar Logic ---
 function toggleYouTubeSidebar() {
@@ -223,6 +224,130 @@ function injectLeetCodeButton() {
     }
 }
 
+// --- Codeforces Sidebar Logic ---
+function toggleCodeforcesSidebar() {
+    let container = document.getElementById("lazyy-codeforces-container");
+    if (container) {
+        container.classList.toggle("lazyy-visible");
+    } else {
+        container = document.createElement("div");
+        container.id = "lazyy-codeforces-container";
+        container.style.cssText = `
+            position: fixed; top: 0; right: -420px; width: 400px; height: 100vh;
+            background: white; z-index: 10000; transition: right 0.3s ease;
+            box-shadow: -5px 0 15px rgba(0,0,0,0.1); border-left: 1px solid #eee;
+            display: flex; flex-direction: column;
+        `;
+
+        const iframe = document.createElement("iframe");
+        iframe.src = chrome.runtime.getURL("sidepanel.html?context=codeforces");
+        iframe.style.cssText = "width: 100%; height: 100%; border: none;";
+
+        const closeBtn = document.createElement("button");
+        closeBtn.innerHTML = "✕";
+        closeBtn.style.cssText = `
+            position: absolute; left: -30px; top: 20px; width: 30px; height: 30px;
+            background: white; border: 1px solid #eee; border-radius: 5px 0 0 5px;
+            cursor: pointer; font-weight: bold; color: #666;
+        `;
+        closeBtn.onclick = () => container.classList.remove("lazyy-visible");
+
+        container.appendChild(closeBtn);
+        container.appendChild(iframe);
+        document.body.appendChild(container);
+
+        // Add style for visibility toggle
+        const style = document.createElement("style");
+        style.textContent = `
+            #lazyy-codeforces-container.lazyy-visible { right: 0 !important; }
+        `;
+        document.head.appendChild(style);
+
+        setTimeout(() => container.classList.add("lazyy-visible"), 10);
+    }
+}
+
+function injectCodeforcesButton() {
+    if (document.getElementById("lazyy-cf-notes-btn")) return;
+
+    // Codeforces problem title is typically in .problem-statement .title or .header .title
+    const titleSelectors = [
+        '.problem-statement .title',
+        '.problem-statement .header .title',
+        'div.title',
+        '.header .title'
+    ];
+
+    let titleElement = null;
+    for (const selector of titleSelectors) {
+        const candidates = document.querySelectorAll(selector);
+        for (const candidate of candidates) {
+            if (candidate.innerText && candidate.innerText.trim().length > 0) {
+                titleElement = candidate;
+                break;
+            }
+        }
+        if (titleElement) break;
+    }
+
+    if (titleElement) {
+        const btn = document.createElement("button");
+        btn.id = "lazyy-cf-notes-btn";
+
+        // Codeforces typically uses blue theme
+        const cfColor = "#1e88e5"; // Codeforces blue
+
+        btn.innerHTML = `
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+                <line x1="16" y1="13" x2="8" y2="13"></line>
+                <line x1="16" y1="17" x2="8" y2="17"></line>
+                <polyline points="10 9 9 9 8 9"></polyline>
+            </svg>
+            Notes
+        `;
+        btn.title = "View Notes";
+        btn.style.cssText = `
+            margin-left: 12px;
+            padding: 6px 14px;
+            border-radius: 6px;
+            background-color: #2d2d2d;
+            color: ${cfColor};
+            border: 1px solid rgba(255,255,255,0.1);
+            font-size: 13px;
+            font-weight: 700;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            line-height: 1;
+            transition: all 0.2s ease;
+            vertical-align: middle;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        `;
+        btn.onmouseover = () => {
+            btn.style.transform = "translateY(-1px)";
+            btn.style.backgroundColor = "#383838";
+            btn.style.boxShadow = "0 4px 8px rgba(0,0,0,0.3)";
+        };
+        btn.onmouseout = () => {
+            btn.style.transform = "translateY(0)";
+            btn.style.backgroundColor = "#2d2d2d";
+            btn.style.boxShadow = "0 2px 4px rgba(0,0,0,0.2)";
+        };
+        btn.onclick = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            toggleCodeforcesSidebar();
+        };
+
+        titleElement.style.display = 'inline-flex';
+        titleElement.style.alignItems = 'center';
+        titleElement.appendChild(btn);
+    }
+}
+
 // --- Initialization ---
 const observer = new MutationObserver(() => {
     if (IS_YOUTUBE && window.location.href.includes("youtube.com/watch")) {
@@ -230,6 +355,9 @@ const observer = new MutationObserver(() => {
     }
     if (IS_LEETCODE && window.location.href.includes("leetcode.com/problems")) {
         injectLeetCodeButton();
+    }
+    if (IS_CODEFORCES && (window.location.href.includes("codeforces.com/problemset/problem") || window.location.href.includes("codeforces.com/contest"))) {
+        injectCodeforcesButton();
     }
 });
 
@@ -302,6 +430,68 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         sendResponse({
             title: title,
             difficulty: difficulty,
+            url: window.location.href
+        });
+        return true;
+    }
+
+    if (request.action === "getCodeforcesProblemDetails") {
+        // Extract title from Codeforces problem page
+        const titleSelectors = [
+            '.problem-statement .title',
+            '.problem-statement .header .title',
+            'div.title'
+        ];
+
+        let title = "Unknown Problem";
+        for (const selector of titleSelectors) {
+            const el = document.querySelector(selector);
+            if (el && el.innerText && el.innerText.trim().length > 0) {
+                title = el.innerText.trim();
+                break;
+            }
+        }
+
+        // Extract rating from problem tags if available
+        let rating = "Unrated";
+        const tagElements = document.querySelectorAll('.tag-box');
+        for (const tag of tagElements) {
+            const tagText = tag.innerText.trim();
+            // Ratings are typically like "*1200", "*1600", etc.
+            if (tagText.startsWith('*')) {
+                rating = tagText.substring(1); // Remove the asterisk
+                break;
+            }
+        }
+
+        // Extract contest and problem ID from URL
+        // URL patterns: /problemset/problem/123/A or /contest/1234/problem/B
+        const urlParts = window.location.pathname.split('/');
+        let contestId = "";
+        let problemId = "";
+
+        if (urlParts.includes('problemset')) {
+            const problemIndex = urlParts.indexOf('problem');
+            if (problemIndex > 0 && problemIndex + 2 < urlParts.length) {
+                contestId = urlParts[problemIndex + 1];
+                problemId = urlParts[problemIndex + 2];
+            }
+        } else if (urlParts.includes('contest')) {
+            const contestIndex = urlParts.indexOf('contest');
+            const problemIndex = urlParts.indexOf('problem');
+            if (contestIndex > 0 && contestIndex + 1 < urlParts.length) {
+                contestId = urlParts[contestIndex + 1];
+            }
+            if (problemIndex > 0 && problemIndex + 1 < urlParts.length) {
+                problemId = urlParts[problemIndex + 1];
+            }
+        }
+
+        sendResponse({
+            title: title,
+            rating: rating,
+            contestId: contestId,
+            problemId: problemId,
             url: window.location.href
         });
         return true;
