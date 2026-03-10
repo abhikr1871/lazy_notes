@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { MemoryRouter as Router, Routes, Route } from 'react-router-dom';
-import NoteEditor from '../pages/NoteEditor';
-import Login from '../pages/login';
-import Signup from '../pages/signup';
-import LeetCodeSidebar from './components/LeetCodeSidebar';
+import YoutubeNotes from '../features/youtube/YoutubeNotes';
+import Login from '../features/auth/Login';
+import Signup from '../features/auth/Signup';
+import LeetCodeManager from '../features/leetcode/LeetCodeManager';
+import CodeforcesManager from '../features/codeforces/CodeforcesManager';
 
 function App() {
     const [context, setContext] = useState(null);
@@ -17,7 +18,19 @@ function App() {
         return (
             <Router>
                 <Routes>
-                    <Route path="/" element={<LeetCodeSidebar />} />
+                    <Route path="/" element={<LeetCodeManager />} />
+                    <Route path="/login" element={<Login />} />
+                    <Route path="/signup" element={<Signup />} />
+                </Routes>
+            </Router>
+        );
+    }
+
+    if (context === 'codeforces') {
+        return (
+            <Router>
+                <Routes>
+                    <Route path="/" element={<CodeforcesManager />} />
                     <Route path="/login" element={<Login />} />
                     <Route path="/signup" element={<Signup />} />
                 </Routes>
@@ -28,7 +41,7 @@ function App() {
     return (
         <Router>
             <Routes>
-                <Route path="/" element={<NoteEditor />} />
+                <Route path="/" element={<YoutubeNotes />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/signup" element={<Signup />} />
             </Routes>

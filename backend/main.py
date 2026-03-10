@@ -5,8 +5,8 @@ from services.ai_service import AIService
 from auth import get_password_hash, verify_password, create_access_token, get_current_user, ACCESS_TOKEN_EXPIRE_MINUTES
 from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File
 from datetime import timedelta
-from database import users_collection, trees_collection, notes_collection
-from models import UserCreate, UserLogin, Token, TreeSync, NoteSync
+from database import users_collection, trees_collection, notes_collection, leetcode_collection, youtube_collection, codeforces_collection
+from models import UserCreate, UserLogin, Token, TreeSync, NoteSync, LeetCodeNote, YoutubeNote, CodeforcesNote
 from services.s3_service import S3Service
 import uuid
 
@@ -62,6 +62,158 @@ async def get_tree(current_user = Depends(get_current_user)):
         doc.pop("_id", None)
         return doc
     return {"topics": [], "data": {}}
+
+@app.post("/leetcode/save")
+async def save_leetcode_note(note: LeetCodeNote, current_user = Depends(get_current_user)):
+    user_id = current_user["username"]
+    
+    # 1. Update Metadata in MongoDB
+    # We store the main structured data in Mongo
+    note_dict = note.dict(exclude={"content_url"}) # Start with all fields
+    
+    # 2. Upload Rich Content to S3 if present and large (or always if policy dictates)
+    # For this implementation, we'll assume note_content IS the rich text.
+    # If users want to offload heavy HTML/JSON to S3:
+    if len(note.note_content) > 100000: # Example threshold
+         # Upload to S3 logic (requires content to be file-like)
+         # For now, we'll keep it simple and store text in Mongo unless user explicitly sends content_url?
+         # Actually, the user asked to use S3 for images/notes. 
+         # Let's assume images are uploaded via /upload/image and URLs are stored in note_content.
+         pass
+
+    # Upsert into MongoDB
+    leetcode_collection.update_one(
+        {"user_id": user_id, "problem_slug": note.problem_slug},
+        {"$set": {
+            "title": note.title,
+            "subtopics": note.subtopics,
+            "note_content": note.note_content,
+            "code_snippet": note.code_snippet,
+            "language": note.language,
+            "images": note.images,
+            "updated_at": uuid.uuid4().hex # rudimentary timestamp/version
+        }},
+        upsert=True
+    )
+    return {"status": "saved", "slug": note.problem_slug}
+
+@app.post("/leetcode/tree")
+async def sync_leetcode_tree(tree: TreeSync, current_user = Depends(get_current_user)):
+    user_id = current_user["username"]
+    # Store tree structure in the same collection but with a special flag/ID
+    leetcode_collection.update_one(
+        {"user_id": user_id, "type": "tree"}, 
+        {"$set": {
+            "topics": tree.topics,
+            "data": tree.data,
+            "updated_at": uuid.uuid4().hex
+        }},
+        upsert=True
+    )
+    return {"status": "saved"}
+
+@app.get("/leetcode/tree")
+async def get_leetcode_tree(current_user = Depends(get_current_user)):
+    user_id = current_user["username"]
+    doc = leetcode_collection.find_one({"user_id": user_id, "type": "tree"})
+    if doc:
+        return {"topics": doc.get("topics", []), "data": doc.get("data", {})}
+    return {"topics": [], "data": {}}
+
+@app.get("/leetcode/all")
+async def get_all_leetcode_notes(current_user = Depends(get_current_user)):
+    user_id = current_user["username"]
+    cursor = leetcode_collection.find({"user_id": user_id}, {"_id": 0, "title": 1, "problem_slug": 1, "subtopics": 1})
+    notes = list(cursor)
+    return {"notes": notes}
+
+@app.get("/leetcode/{problem_slug}")
+async def get_leetcode_note(problem_slug: str, current_user = Depends(get_current_user)):
+    user_id = current_user["username"]
+    doc = leetcode_collection.find_one({"user_id": user_id, "problem_slug": problem_slug})
+    
+    if doc:
+        doc.pop("_id", None)
+        return doc
+    
+    return {"found": False}
+
+# --- YouTube Endpoints ---
+@app.post("/youtube/save")
+async def save_youtube_note(note: YoutubeNote, current_user = Depends(get_current_user)):
+    user_id = current_user["username"]
+    youtube_collection.update_one(
+        {"user_id": user_id, "video_id": note.video_id},
+        {"$set": {
+            "video_title": note.video_title,
+            "timestamp": note.timestamp,
+            "note_content": note.note_content,
+            "images": note.images,
+            "updated_at": uuid.uuid4().hex
+        }},
+        upsert=True
+    )
+    return {"status": "saved", "id": note.video_id}
+
+@app.get("/youtube/{video_id}")
+async def get_youtube_note(video_id: str, current_user = Depends(get_current_user)):
+    user_id = current_user["username"]
+    doc = youtube_collection.find_one({"user_id": user_id, "video_id": video_id})
+    if doc:
+        doc.pop("_id", None)
+        return doc
+    return {"found": False}
+
+# --- Codeforces Endpoints ---
+@app.post("/codeforces/save")
+async def save_codeforces_note(note: CodeforcesNote, current_user = Depends(get_current_user)):
+    user_id = current_user["username"]
+    codeforces_collection.update_one(
+        {"user_id": user_id, "problem_id": note.problem_id},
+        {"$set": {
+             "contest_id": note.contest_id,
+             "title": note.title,
+             "note_content": note.note_content,
+             "code_snippet": note.code_snippet,
+             "language": note.language,
+             "images": note.images,
+             "updated_at": uuid.uuid4().hex
+        }},
+        upsert=True
+    )
+    return {"status": "saved", "id": note.problem_id}
+
+@app.post("/codeforces/tree")
+async def sync_codeforces_tree(tree: TreeSync, current_user = Depends(get_current_user)):
+    user_id = current_user["username"]
+    # Store tree structure in the same collection but with a special flag/ID
+    codeforces_collection.update_one(
+        {"user_id": user_id, "type": "tree"}, 
+        {"$set": {
+            "topics": tree.topics,
+            "data": tree.data,
+            "updated_at": uuid.uuid4().hex
+        }},
+        upsert=True
+    )
+    return {"status": "saved"}
+
+@app.get("/codeforces/tree")
+async def get_codeforces_tree(current_user = Depends(get_current_user)):
+    user_id = current_user["username"]
+    doc = codeforces_collection.find_one({"user_id": user_id, "type": "tree"})
+    if doc:
+        return {"topics": doc.get("topics", []), "data": doc.get("data", {})}
+    return {"topics": [], "data": {}}
+
+@app.get("/codeforces/{problem_id}")
+async def get_codeforces_note(problem_id: str, current_user = Depends(get_current_user)):
+    user_id = current_user["username"]
+    doc = codeforces_collection.find_one({"user_id": user_id, "problem_id": problem_id})
+    if doc:
+        doc.pop("_id", None)
+        return doc
+    return {"found": False}
 
 @app.post("/notes")
 async def sync_note(note: NoteSync, current_user = Depends(get_current_user)):

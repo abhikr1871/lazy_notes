@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { api } from '../../services/api';
 
 function Login() {
     const [email, setEmail] = useState('');
@@ -14,22 +15,13 @@ function Login() {
         setIsLoading(true);
 
         try {
-            const response = await fetch('http://localhost:8000/login', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ email, password }),
-            });
-
-            const data = await response.json();
-
-            if (!response.ok) {
-                throw new Error(data.detail || 'Login failed');
-            }
+            const data = await api.auth.login(email, password);
 
             // Save token
             localStorage.setItem('token', data.access_token);
+            if (typeof chrome !== 'undefined' && chrome.storage) {
+                chrome.storage.local.set({ token: data.access_token });
+            }
             // Redirect or notify success - for extension, maybe just show success state or close
             navigate('/');
 

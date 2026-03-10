@@ -5,10 +5,11 @@ import {
     Heading1, Heading2, Link as LinkIcon, Image as ImageIcon,
     Type, AlignLeft, Camera, FileText, Mic, Clock, Film, Moon, Sun, LogOut
 } from 'lucide-react';
-import { exportToPDF } from '../../utils/pdf';
+import { exportToPDF } from '../utils/pdf';
+import { api } from '../../services/api';
 import { useNavigate } from 'react-router-dom';
 
-function NoteEditor({ storageKey = 'lazyyNotesContent', onBack, placeholder, simpleMode = false }) {
+function SmartEditor({ storageKey = 'lazyyNotesContent', onBack, placeholder, simpleMode = false, onSave, onLoad }) {
     const [html, setHtml] = useState("<h1>Enter Title</h1><p>Start typing your notes here...</p>");
     const [status, setStatus] = useState("");
     const [isListening, setIsListening] = useState(false);
@@ -27,38 +28,42 @@ function NoteEditor({ storageKey = 'lazyyNotesContent', onBack, placeholder, sim
             if (result[storageKey]) {
                 setHtml(result[storageKey]);
             } else if (placeholder && !result[storageKey]) {
-                // If simpleMode/placeholder is present and no saved content, use placeholder or empty (for custom placeholder via css)
-                // Actually sticking to default behavior but maybe clearing if simpleMode?
                 if (simpleMode) setHtml("");
             }
         });
 
-        // 2. Try Cloud Load (If authenticated and using a specific key)
-        if (token && storageKey !== 'lazyyNotesContent') {
-            fetch(`http://localhost:8000/notes/${storageKey}`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            })
-                .then(res => res.json())
-                .then(data => {
-                    if (data.content) {
+        // 2. Try Cloud Load
+        const fetchCloud = async () => {
+            if (!token) return;
+
+            try {
+                if (onLoad) {
+                    const content = await onLoad();
+                    if (content) {
+                        setHtml(content);
+                        chrome.storage.local.set({ [storageKey]: content });
+                    }
+                } else if (storageKey !== 'lazyyNotesContent') {
+                    const data = await api.notes.get(storageKey);
+                    if (data && data.content) {
                         setHtml(data.content);
-                        // Update local cache
                         chrome.storage.local.set({ [storageKey]: data.content });
                     }
-                })
-                .catch(err => console.error("Cloud note fetch error:", err));
-        }
+                }
+            } catch (err) {
+                console.error("Cloud note fetch error:", err);
+            }
+        };
+        fetchCloud();
 
-    }, [storageKey, simpleMode]); // Added simpleMode dep
+    }, [storageKey, simpleMode, onLoad]);
 
     // Auto-Save Effect for Simple Mode
     useEffect(() => {
         if (!simpleMode) return;
-
         const timer = setTimeout(() => {
             handleSave();
-        }, 1000); // 1-second debounce
-
+        }, 1000);
         return () => clearTimeout(timer);
     }, [html, simpleMode]);
 
@@ -72,32 +77,70 @@ function NoteEditor({ storageKey = 'lazyyNotesContent', onBack, placeholder, sim
         if (editorRef.current) editorRef.current.focus();
     };
 
-    const handleSave = () => {
-        // Save Local
-        chrome.storage.local.set({ [storageKey]: html }, () => {
-            if (!simpleMode) { // Only show status flash in normal mode (simple mode shows quiet state?)
-                setStatus("Saved!");
-                setTimeout(() => setStatus(""), 2000);
-            }
-        });
 
-        // Save Cloud
-        const token = localStorage.getItem('token');
-        if (token && storageKey !== 'lazyyNotesContent') {
-            fetch('http://localhost:8000/notes', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({ note_id: storageKey, content: html })
-            })
-                .then(res => {
-                    // Silent success for cloud
-                })
-                .catch(err => console.error("Cloud save error:", err));
+    const handleSave = async () => {
+        if (!isAuthenticated) { // Fixed: using isAuthenticated state instead of undefined isLoggedIn
+            // prompt login?
+            alert("Please login to save notes to cloud.");
+            return;
+        }
+
+        setStatus("Saving...");
+        try {
+            if (onSave) {
+                await onSave(html);
+            } else {
+                await api.notes.save(storageKey, html);
+            }
+
+            // Also save to local
+            localStorage.setItem(storageKey, html);
+            chrome.storage.local.set({ [storageKey]: html });
+
+            setStatus("Saved!");
+            setTimeout(() => setStatus(""), 1000);
+        } catch (error) {
+            console.error('Save failed:', error);
+            setStatus("Error");
+            alert('Failed to save to cloud');
         }
     };
+    const handleContainerClick = (e) => {
+        // If clicking the container background (not the content itself)
+        // We check if the click target is the container div
+        if (e.target === e.currentTarget || e.target.id === 'editor-wrapper') {
+            e.stopPropagation(); // Prevent bubbling causing double focus
+            if (editorRef.current) {
+                const lastElement = editorRef.current.lastElementChild;
+                // If the user deleted the trailing newline after an image, we add it back
+                // We check for IMG tag specifically
+                if (lastElement && lastElement.tagName === 'IMG') {
+                    setHtml(prev => prev + "<p><br/></p>");
+                    // Wait for state update and render
+                    setTimeout(moveCursorToEnd, 0);
+                } else {
+                    moveCursorToEnd();
+                }
+            }
+        }
+    };
+
+    const moveCursorToEnd = () => {
+        if (editorRef.current) {
+            editorRef.current.focus();
+            try {
+                const range = document.createRange();
+                range.selectNodeContents(editorRef.current);
+                range.collapse(false);
+                const sel = window.getSelection();
+                sel.removeAllRanges();
+                sel.addRange(range);
+            } catch (err) {
+                console.log("Cursor move failed:", err);
+            }
+        }
+    };
+
 
     const handleLogoClick = () => {
         setIsAnimating(true);
@@ -105,10 +148,19 @@ function NoteEditor({ storageKey = 'lazyyNotesContent', onBack, placeholder, sim
     };
 
     const handleLogout = () => {
-        localStorage.removeItem('token');
+        // Clear all local data to prevent leaks between users
+        localStorage.clear();
+        chrome.storage.local.clear(() => {
+            console.log("Storage cleared");
+        });
+
         setIsAuthenticated(false);
         setStatus("Logged out");
-        setTimeout(() => setStatus(""), 2000);
+        // Force reload or navigate
+        setTimeout(() => {
+            setStatus("");
+            navigate('/login');
+        }, 1000);
     };
 
     const handleSnap = async () => {
@@ -119,11 +171,11 @@ function NoteEditor({ storageKey = 'lazyyNotesContent', onBack, placeholder, sim
                     if (chrome.runtime.lastError || !response || !response.success) {
                         console.log("Video capture failed, fallback to tab.");
                         const dataUrl = await chrome.tabs.captureVisibleTab(null, { format: "png" });
-                        const imgTag = `<br/><img src="${dataUrl}" style="max-width: 100%; border-radius: 8px; margin: 10px 0;" /><br/>`;
+                        const imgTag = `<br/><img src="${dataUrl}" style="max-width: 100%; border-radius: 8px; margin: 10px 0;" /><p><br/></p>`;
                         setHtml(prev => prev + imgTag);
                     } else {
                         const { imageData, time } = response;
-                        const content = `<br/><div style="color: #6366f1; font-weight: bold;">⏱️ ${time}</div><img src="${imageData}" style="max-width: 100%; border-radius: 12px; margin: 5px 0 15px 0; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);" /><br/>`;
+                        const content = `<br/><div style="color: #6366f1; font-weight: bold;">⏱️ ${time}</div><img src="${imageData}" style="max-width: 100%; border-radius: 12px; margin: 5px 0 15px 0; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);" /><p><br/></p>`;
                         setHtml(prev => prev + content);
                     }
                 });
@@ -180,19 +232,11 @@ function NoteEditor({ storageKey = 'lazyyNotesContent', onBack, placeholder, sim
     };
 
     const handleImageUpload = async (file) => {
-        const formData = new FormData();
-        formData.append('file', file);
+        if (!file) return;
 
         try {
-            if (!simpleMode) setStatus("Uploading image...");
-            const response = await fetch('http://localhost:8000/upload/image', {
-                method: 'POST',
-                body: formData
-            });
+            const data = await api.upload.image(file);
 
-            if (!response.ok) throw new Error('Upload failed');
-
-            const data = await response.json();
             const imgHtml = `<img src="${data.url}" style="max-width: 100%; border-radius: 8px; margin: 10px 0; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);" /><br/>`;
             document.execCommand('insertHTML', false, imgHtml);
             if (!simpleMode) {
@@ -207,7 +251,6 @@ function NoteEditor({ storageKey = 'lazyyNotesContent', onBack, placeholder, sim
             }
         }
     };
-
     const handlePaste = (e) => {
         const items = (e.clipboardData || e.originalEvent.clipboardData).items;
         for (let i = 0; i < items.length; i++) {
@@ -240,63 +283,67 @@ function NoteEditor({ storageKey = 'lazyyNotesContent', onBack, placeholder, sim
 
     return (
         <div
-            className="h-full flex flex-col bg-slate-50/50 font-display selection:bg-indigo-100 text-slate-700"
+            className="h-full flex flex-col bg-white font-display selection:bg-indigo-100 text-slate-700"
             onDrop={handleDrop}
             onDragOver={(e) => e.preventDefault()}
         >
-            {/* Brand Header - HIDDEN IN SIMPLE MODE */}
+            {/* Compact Header - Replacing the Large Brand Header */}
             {!simpleMode && (
-                <header className="bg-white/90 backdrop-blur-md px-5 py-3 border-b border-purple-50 flex justify-between items-center shrink-0 shadow-sm sticky top-0 z-50">
-                    <div className="flex items-center space-x-3.5 group cursor-pointer" onClick={handleLogoClick}>
-                        <div className="relative">
-                            <div className={`absolute -inset-1 bg-gradient-to-r from-violet-600 to-pink-600 rounded-2xl blur opacity-25 transition duration-200 ${isAnimating ? 'opacity-75 scale-110' : 'group-hover:opacity-50'}`}></div>
-                            <img
-                                src="icons/icon48.png"
-                                alt="Logo"
-                                className={`relative w-10 h-10 rounded-xl shadow-sm transition-all duration-[1500ms] ease-in-out ${isAnimating ? 'scale-125 rotate-[1080deg]' : 'group-hover:scale-105'}`}
-                            />
-                        </div>
-                        <div>
-                            <h1 className="font-black text-2xl tracking-tight text-transparent bg-clip-text bg-gradient-to-br from-violet-600 via-fuchsia-500 to-pink-500 drop-shadow-sm">
-                                Lazzy AI
-                            </h1>
-                            <div className="flex items-center space-x-1">
-                                <p className="text-[10px] text-slate-400 font-bold tracking-[0.2em] uppercase pl-0.5">COMPANION</p>
-                                <div className={`w-1.5 h-1.5 rounded-full bg-violet-500 ${isAnimating ? 'animate-bounce' : ''}`} style={{ animationDuration: '0.6s' }}></div>
-                                <div className={`w-1.5 h-1.5 rounded-full bg-pink-500 ${isAnimating ? 'animate-bounce' : ''}`} style={{ animationDuration: '0.7s', animationDelay: '0.1s' }}></div>
+                <header className="bg-white px-3 py-2 border-b border-slate-100 flex justify-between items-center shrink-0 z-50">
+                    <div className="flex items-center gap-2">
+                        {/* Open Note Button */}
+                        <button
+                            onClick={() => {/* TODO: Implement Open Notes Logic */ alert("Open Notes feature coming soon!") }}
+                            className="px-3 py-1.5 bg-white border border-slate-200 hover:border-indigo-300 hover:text-indigo-600 rounded-full text-xs font-bold transition-all shadow-sm flex items-center gap-1.5"
+                        >
+                            <FileText size={14} />
+                            <span>Open Note</span>
+                        </button>
+
+                        {/* Center Logo/Title similar to Askify */}
+                        <div className="flex items-center gap-2 ml-2">
+                            <div className="relative group cursor-pointer" onClick={handleLogoClick}>
+                                <div className={`absolute -inset-0.5 bg-gradient-to-r from-violet-600 to-pink-600 rounded-lg blur opacity-25 transition duration-200 ${isAnimating ? 'opacity-75' : 'group-hover:opacity-50'}`}></div>
+                                <img
+                                    src="icons/icon48.png"
+                                    alt="Logo"
+                                    className={`relative w-6 h-6 rounded-md shadow-sm transition-all duration-[1500ms] ease-in-out ${isAnimating ? 'rotate-[1080deg]' : 'group-hover:scale-105'}`}
+                                />
                             </div>
+                            <h1 className="font-bold text-sm tracking-tight text-slate-800">
+                                LAZZY
+                            </h1>
                         </div>
                     </div>
+
                     <div className="flex items-center space-x-1">
-                        <span className="text-xs text-indigo-600 font-medium mr-2 animate-fade-in">{status}</span>
+                        <span className="text-[10px] text-indigo-600 font-medium mr-2 animate-fade-in">{status}</span>
 
                         {/* Auth Buttons */}
                         {isAuthenticated ? (
-                            <button onClick={handleLogout} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="Logout">
-                                <LogOut size={18} />
+                            <button onClick={handleLogout} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="Logout">
+                                <LogOut size={16} />
                             </button>
                         ) : (
-                            <div className="flex items-center space-x-1">
-                                <button onClick={() => navigate('/login')} className="px-3 py-1.5 bg-slate-900 text-white hover:bg-slate-700 rounded-lg text-xs font-bold transition-colors shadow-lg shadow-slate-200">
-                                    Login
-                                </button>
-                            </div>
+                            <button onClick={() => navigate('/login')} className="px-2 py-1 bg-slate-900 text-white hover:bg-slate-700 rounded-md text-[10px] font-bold transition-colors">
+                                Login
+                            </button>
                         )}
 
-                        <div className="w-px h-5 bg-slate-200 mx-1"></div>
-
-                        <button onClick={handleSave} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
-                            <Save size={18} />
+                        <button onClick={handleSave} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
+                            <Save size={16} />
                         </button>
-                        <button onClick={() => chrome.runtime.openOptionsPage()} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-lg transition-colors">
-                            <Settings size={18} />
+                        <button onClick={() => chrome.runtime.openOptionsPage()} className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-lg transition-colors">
+                            <Settings size={16} />
                         </button>
                     </div>
                 </header >
             )}
 
-            {/* Modern Toolbar */}
-            <div className={`bg-white/80 backdrop-blur-sm px-2 py-1 border-b border-slate-100 flex flex-col gap-1 shrink-0 z-10 ${simpleMode ? 'bg-slate-50' : ''}`}>
+            {/* Modern Toolbar - Made more compact */}
+            <div className={`bg-white px-2 py-1.5 border-b border-slate-100 flex flex-col gap-1 shrink-0 z-10 ${simpleMode ? 'bg-slate-50' : ''}`}>
+                {/* ... Toolbar content remains mostly same but we can adjust padding in CSS if needed ... */}
+                {/* Re-using existing toolbar structure but assuming container styling handles compactness */}
                 {/* Row 1: Extensive Formatting */}
                 <div className="flex items-center justify-between overflow-x-auto scrollbar-hide pb-0.5 gap-1">
 
@@ -327,7 +374,7 @@ function NoteEditor({ storageKey = 'lazyyNotesContent', onBack, placeholder, sim
                             <option value="7">36</option>
                         </select>
                     </div>
-                    <div className="w-px h-4 bg-slate-200 mx-1"></div>
+                    <div className="w-px h-3 bg-slate-200 mx-1"></div>
 
                     <ToolbarBtn onClick={() => executeCommand('formatBlock', 'H1')} icon={Heading1} title="H1" />
                     <ToolbarBtn onClick={() => executeCommand('formatBlock', 'H2')} icon={Heading2} title="H2" />
@@ -340,7 +387,7 @@ function NoteEditor({ storageKey = 'lazyyNotesContent', onBack, placeholder, sim
                         <button onClick={() => executeCommand('hiliteColor', '#fef08a')} className="p-1 hover:bg-slate-100 rounded bg-yellow-100 text-slate-800 font-bold text-xs" title="Highlight">A</button>
                     </div>
 
-                    <div className="w-px h-4 bg-slate-200 mx-1"></div>
+                    <div className="w-px h-3 bg-slate-200 mx-1"></div>
 
                     <ToolbarBtn onClick={() => executeCommand('insertOrderedList')} icon={List} title="Numbered List" />
                     <ToolbarBtn onClick={() => executeCommand('insertUnorderedList')} icon={List} title="Bullet List" />
@@ -352,71 +399,54 @@ function NoteEditor({ storageKey = 'lazyyNotesContent', onBack, placeholder, sim
 
                     <ToolbarBtn onClick={handleLink} icon={LinkIcon} title="Link" />
 
-                    <div className="w-px h-4 bg-slate-200 mx-1"></div>
+                    <div className="w-px h-3 bg-slate-200 mx-1"></div>
 
-                    {!simpleMode && (
-                        <>
-                            <button onClick={() => executeCommand('subscript')} className="p-1 text-slate-500 hover:text-indigo-600 font-serif text-xs" title="Subscript">x₂</button>
-                            <button onClick={() => executeCommand('superscript')} className="p-1 text-slate-500 hover:text-indigo-600 font-serif text-xs" title="Superscript">x²</button>
-                        </>
-                    )}
-
+                    {/* Row 2: Smart Tools - Inline for compactness */}
+                    <button onClick={handleSnap} title="Snap Frame" className="p-1 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg">
+                        <Camera size={16} />
+                    </button>
+                    <button onClick={() => setAutoSnap(!autoSnap)} title="AutoSnap" className={`p-1 rounded-lg ${autoSnap ? 'bg-purple-100 text-purple-600' : 'text-slate-500 hover:bg-slate-100'}`}>
+                        <Film size={16} />
+                    </button>
+                    <button onClick={handleMic} title="Dictate" className={`p-1 rounded-lg ${isListening ? 'bg-red-100 text-red-600 animate-pulse' : 'text-slate-500 hover:bg-slate-100'}`}>
+                        <Mic size={16} />
+                    </button>
+                    <button onClick={handleTimestamp} title="Timestamp" className="p-1 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg">
+                        <Clock size={16} />
+                    </button>
+                    <button onClick={() => exportToPDF("note-editor-content")} title="Export PDF" className="p-1 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg">
+                        <FileText size={16} />
+                    </button>
 
                 </div>
-
-
-                {/* Row 2: Smart Tools - HIDDEN IN SIMPLE MODE */}
-                {!simpleMode && (
-                    <div className="flex items-center space-x-2 overflow-x-auto scrollbar-hide pt-1">
-                        <button onClick={handleSnap} className="flex-none flex items-center space-x-1.5 px-3 py-1.5 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white rounded-full text-[10px] font-bold shadow-md shadow-indigo-200 transition-all hover:scale-105 active:scale-95">
-                            <Camera size={12} />
-                            <span>Snap Frame</span>
-                        </button>
-
-                        <button onClick={() => setAutoSnap(!autoSnap)} className={`flex-none flex items-center space-x-1 px-2.5 py-1.5 rounded-full text-[10px] font-semibold border transition-all ${autoSnap ? 'bg-purple-100 border-purple-200 text-purple-700' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}`}>
-                            <Film size={12} />
-                            <span>AutoSnap</span>
-                        </button>
-
-                        <div className="w-px h-4 bg-slate-200 mx-0.5"></div>
-
-                        <button onClick={handleMic} className={`p-1.5 rounded-full transition-all ${isListening ? 'bg-red-50 text-red-500 ring-2 ring-red-100 animate-pulse' : 'bg-white border border-slate-200 text-slate-500 hover:text-indigo-500 hover:border-indigo-200'}`} title="Dictate">
-                            <Mic size={14} />
-                        </button>
-
-                        <button onClick={handleTimestamp} className="p-1.5 rounded-full bg-white border border-slate-200 text-slate-500 hover:text-indigo-500 hover:border-indigo-200 transition-all" title="Timestamp">
-                            <Clock size={14} />
-                        </button>
-
-                        <button onClick={() => exportToPDF("note-editor-content")} className="flex-none flex items-center space-x-1.5 px-3 py-1.5 bg-slate-100 hover:bg-red-50 text-slate-600 hover:text-red-500 border border-transparent hover:border-red-100 rounded-full text-[10px] font-semibold transition-all">
-                            <FileText size={12} />
-                            <span>PDF</span>
-                        </button>
-                    </div>
-                )}
             </div>
 
-            {/* Editor Canvas */}
-            < div className="flex-1 overflow-y-auto p-5" id="pdf-container" >
-                <ContentEditable
-                    id="note-editor-content"
-                    innerRef={editorRef}
-                    html={html}
-                    disabled={false}
-                    onChange={handleChange}
-                    onPaste={handlePaste}
-                    placeholder={placeholder}
-                    className="outline-none min-h-full prose prose-sm prose-slate max-w-none 
+            {/* Editor Canvas - Removed borders and padding as requested */}
+            <div className="flex-1 overflow-y-auto" id="pdf-container" onClick={handleContainerClick}>
+                <div
+                    id="editor-wrapper"
+                    onClick={handleContainerClick}
+                    className="min-h-full bg-white p-4 md:p-6 cursor-text max-w-none mx-auto transition-all duration-200 outline-none"
+                    style={{ border: 'none', boxShadow: 'none' }}
+                >
+                    <ContentEditable
+                        id="note-editor-content"
+                        innerRef={editorRef}
+                        html={html}
+                        disabled={false}
+                        onChange={handleChange}
+                        onPaste={handlePaste}
+                        placeholder={placeholder}
+                        className="outline-none w-full prose prose-sm prose-slate max-w-none 
             prose-headings:font-bold prose-headings:text-slate-800 
             prose-p:text-slate-600 prose-p:leading-relaxed
             prose-a:text-indigo-600 prose-a:no-underline hover:prose-a:underline
             prose-img:rounded-xl prose-img:shadow-sm"
-                />
-            </div >
-
-
-        </div >
+                    />
+                </div>
+            </div>
+        </div>
     );
 }
 
-export default NoteEditor;
+export default SmartEditor;
