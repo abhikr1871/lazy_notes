@@ -65,8 +65,8 @@ async def get_tree(current_user = Depends(get_current_user)):
     return {"topics": [], "data": {}}
 
 @app.post("/leetcode/save")
-async def save_leetcode_note(note: LeetCodeNote, current_user = Depends(get_optional_user)):
-    user_id = current_user["username"] if current_user else "anonymous"
+async def save_leetcode_note(note: LeetCodeNote, current_user = Depends(get_current_user)):
+    user_id = current_user["username"]
     leetcode_collection.update_one(
         {"user_id": user_id, "problem_slug": note.problem_slug},
         {"$set": {
@@ -83,8 +83,8 @@ async def save_leetcode_note(note: LeetCodeNote, current_user = Depends(get_opti
     return {"status": "saved", "slug": note.problem_slug}
 
 @app.post("/leetcode/tree")
-async def sync_leetcode_tree(tree: TreeSync, current_user = Depends(get_optional_user)):
-    user_id = current_user["username"] if current_user else "anonymous"
+async def sync_leetcode_tree(tree: TreeSync, current_user = Depends(get_current_user)):
+    user_id = current_user["username"]
     leetcode_collection.update_one(
         {"user_id": user_id, "type": "tree"}, 
         {"$set": {
@@ -122,8 +122,8 @@ async def get_leetcode_note(problem_slug: str, current_user = Depends(get_option
 
 # --- YouTube Endpoints ---
 @app.post("/youtube/save")
-async def save_youtube_note(note: YoutubeNote, current_user = Depends(get_optional_user)):
-    user_id = current_user["username"] if current_user else "anonymous"
+async def save_youtube_note(note: YoutubeNote, current_user = Depends(get_current_user)):
+    user_id = current_user["username"]
     youtube_collection.update_one(
         {"user_id": user_id, "video_id": note.video_id},
         {"$set": {
@@ -148,8 +148,8 @@ async def get_youtube_note(video_id: str, current_user = Depends(get_optional_us
 
 # --- Codeforces Endpoints ---
 @app.post("/codeforces/save")
-async def save_codeforces_note(note: CodeforcesNote, current_user = Depends(get_optional_user)):
-    user_id = current_user["username"] if current_user else "anonymous"
+async def save_codeforces_note(note: CodeforcesNote, current_user = Depends(get_current_user)):
+    user_id = current_user["username"]
     codeforces_collection.update_one(
         {"user_id": user_id, "problem_id": note.problem_id},
         {"$set": {
@@ -166,8 +166,8 @@ async def save_codeforces_note(note: CodeforcesNote, current_user = Depends(get_
     return {"status": "saved", "id": note.problem_id}
 
 @app.post("/codeforces/tree")
-async def sync_codeforces_tree(tree: TreeSync, current_user = Depends(get_optional_user)):
-    user_id = current_user["username"] if current_user else "anonymous"
+async def sync_codeforces_tree(tree: TreeSync, current_user = Depends(get_current_user)):
+    user_id = current_user["username"]
     codeforces_collection.update_one(
         {"user_id": user_id, "type": "tree"}, 
         {"$set": {

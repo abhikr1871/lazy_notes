@@ -80,28 +80,37 @@ function SmartEditor({ storageKey = 'lazyyNotesContent', onBack, placeholder, si
 
 
     const handleSave = async () => {
+        if (!isAuthenticated) {
+            setStatus("Please log in");
+            const wantLogin = window.confirm("You need to be logged in to save your notes to the cloud. Would you like to log in now?");
+            if (wantLogin) {
+                navigate('/login');
+            }
+            return;
+        }
+
         setStatus("Saving...");
         try {
+            if (onSave) {
+                await onSave(html);
+            } else {
+                await api.notes.save(storageKey, html);
+            }
+
             localStorage.setItem(storageKey, html);
             if (typeof chrome !== 'undefined' && chrome.storage) {
                 chrome.storage.local.set({ [storageKey]: html });
             }
-        } catch (e) {
-            console.error("Local storage save failed:", e);
-        }
 
-        try {
-            if (onSave) {
-                await onSave(html);
-            } else if (isAuthenticated) {
-                await api.notes.save(storageKey, html);
-            }
             setStatus("Saved!");
             setTimeout(() => setStatus(""), 1500);
         } catch (error) {
-            console.warn('Cloud save fallback:', error);
-            setStatus("Saved locally");
-            setTimeout(() => setStatus(""), 1500);
+            console.error('Cloud save failed:', error);
+            setStatus("Save failed");
+            const wantLogin = window.confirm("Your login session may have expired. Would you like to log in again now?");
+            if (wantLogin) {
+                navigate('/login');
+            }
         }
     };
     const handleContainerClick = (e) => {
