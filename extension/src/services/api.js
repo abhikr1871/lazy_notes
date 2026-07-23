@@ -251,5 +251,15 @@ export const api = {
             });
             return handleResponse(response);
         }
+    },
+
+    // Stats & Analytics
+    stats: {
+        get: async () => {
+            const response = await fetch(`${BASE_URL}/stats`, {
+                headers: await getHeaders()
+            });
+            return handleResponse(response);
+        }
     }
 };

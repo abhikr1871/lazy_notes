@@ -501,3 +501,59 @@ async def submit_review(request: dict, current_user = Depends(get_optional_user)
         "ease_factor": ease_factor
     }
 
+@app.get("/stats")
+async def get_stats(current_user = Depends(get_optional_user)):
+    user_id = current_user["username"] if current_user else "anonymous"
+
+    lc_notes = list(leetcode_collection.find({"user_id": user_id, "type": {"$ne": "tree"}}))
+    cf_notes = list(codeforces_collection.find({"user_id": user_id, "type": {"$ne": "tree"}}))
+    yt_notes = list(youtube_collection.find({"user_id": user_id}))
+
+    total_notes = len(lc_notes) + len(cf_notes) + len(yt_notes)
+
+    daily_activity = {}
+    topic_counts = {}
+
+    for doc in lc_notes + cf_notes + yt_notes:
+        updated_at = doc.get("updated_at")
+        date_str = None
+        if updated_at:
+            try:
+                date_str = str(updated_at)[:10]
+            except Exception:
+                pass
+        if not date_str or len(date_str) < 10:
+            date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+        daily_activity[date_str] = daily_activity.get(date_str, 0) + 1
+
+        subtopics = doc.get("subtopics", [])
+        if isinstance(subtopics, list):
+            for t in subtopics:
+                if t and isinstance(t, str):
+                    topic_counts[t] = topic_counts.get(t, 0) + 1
+
+    sorted_dates = sorted(daily_activity.keys(), reverse=True)
+    streak = 0
+    check_date = datetime.now(timezone.utc)
+
+    for i in range(365):
+        d_str = check_date.strftime("%Y-%m-%d")
+        if d_str in daily_activity:
+            streak += 1
+            check_date -= timedelta(days=1)
+        elif i == 0:
+            check_date -= timedelta(days=1)
+        else:
+            break
+
+    return {
+        "total_notes": total_notes,
+        "leetcode_count": len(lc_notes),
+        "codeforces_count": len(cf_notes),
+        "youtube_count": len(yt_notes),
+        "streak_days": streak,
+        "daily_activity": daily_activity,
+        "topic_counts": topic_counts
+    }
+
