@@ -233,5 +233,23 @@ export const api = {
             });
             return handleResponse(response);
         }
+    },
+
+    // Spaced Repetition Review
+    review: {
+        getQueue: async () => {
+            const response = await fetch(`${BASE_URL}/review/queue`, {
+                headers: await getHeaders()
+            });
+            return handleResponse(response);
+        },
+        submit: async ({ problem_id, platform, rating }) => {
+            const response = await fetch(`${BASE_URL}/review/submit`, {
+                method: 'POST',
+                headers: await getHeaders(),
+                body: JSON.stringify({ problem_id, platform, rating })
+            });
+            return handleResponse(response);
+        }
     }
 };

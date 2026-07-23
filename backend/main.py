@@ -4,7 +4,7 @@ from services.ai_service import AIService
 # from ai_service import AIService
 from auth import get_password_hash, verify_password, create_access_token, get_current_user, get_optional_user, ACCESS_TOKEN_EXPIRE_MINUTES
 from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from database import users_collection, trees_collection, notes_collection, leetcode_collection, youtube_collection, codeforces_collection
 from models import UserCreate, UserLogin, Token, TreeSync, NoteSync, LeetCodeNote, YoutubeNote, CodeforcesNote, CompileRequest
 from services.s3_service import S3Service
@@ -416,4 +416,108 @@ async def login(user: UserLogin):
 @app.get("/users/me")
 async def read_users_me(current_user = Depends(get_current_user)):
     return {"username": current_user["username"], "email": current_user["email"]}
+
+@app.get("/review/queue")
+async def get_review_queue(current_user = Depends(get_optional_user)):
+    user_id = current_user["username"] if current_user else "anonymous"
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    queue = []
+    lc_cursor = leetcode_collection.find({"user_id": user_id})
+    for doc in lc_cursor:
+        next_rev = doc.get("next_review")
+        if not next_rev or next_rev <= now_iso:
+            queue.append({
+                "id": str(doc.get("_id", doc.get("problem_id"))),
+                "problem_id": doc.get("problem_id"),
+                "title": doc.get("title", doc.get("problem_id")),
+                "platform": "LeetCode",
+                "difficulty": doc.get("difficulty", "Medium"),
+                "notes": doc.get("content", ""),
+                "code": doc.get("code", ""),
+                "review_count": doc.get("review_count", 0),
+                "interval": doc.get("interval", 1),
+                "ease_factor": doc.get("ease_factor", 2.5),
+                "next_review": next_rev
+            })
+
+    cf_cursor = codeforces_collection.find({"user_id": user_id})
+    for doc in cf_cursor:
+        next_rev = doc.get("next_review")
+        if not next_rev or next_rev <= now_iso:
+            queue.append({
+                "id": str(doc.get("_id", doc.get("problem_id"))),
+                "problem_id": doc.get("problem_id"),
+                "title": doc.get("title", doc.get("problem_id")),
+                "platform": "Codeforces",
+                "difficulty": doc.get("difficulty", "1200"),
+                "notes": doc.get("content", ""),
+                "code": doc.get("code", ""),
+                "review_count": doc.get("review_count", 0),
+                "interval": doc.get("interval", 1),
+                "ease_factor": doc.get("ease_factor", 2.5),
+                "next_review": next_rev
+            })
+
+    return {"queue": queue}
+
+@app.post("/review/submit")
+async def submit_review(request: dict, current_user = Depends(get_optional_user)):
+    user_id = current_user["username"] if current_user else "anonymous"
+    problem_id = request.get("problem_id")
+    platform = str(request.get("platform", "LeetCode")).lower()
+    rating = int(request.get("rating", 3))
+
+    coll = leetcode_collection if "leetcode" in platform else codeforces_collection
+    doc = coll.find_one({"user_id": user_id, "problem_id": problem_id}) or coll.find_one({"problem_id": problem_id})
+
+    review_count = doc.get("review_count", 0) if doc else 0
+    interval = doc.get("interval", 1) if doc else 1
+    ease_factor = doc.get("ease_factor", 2.5) if doc else 2.5
+
+    if rating == 1:
+        interval = 1
+        review_count = 0
+        ease_factor = max(1.3, ease_factor - 0.2)
+    elif rating == 2:
+        interval = max(1, round(interval * 1.2))
+        ease_factor = max(1.3, ease_factor - 0.15)
+    elif rating == 3:
+        if review_count == 0:
+            interval = 1
+        elif review_count == 1:
+            interval = 6
+        else:
+            interval = round(interval * ease_factor)
+        review_count += 1
+    elif rating == 4:
+        if review_count == 0:
+            interval = 4
+        elif review_count == 1:
+            interval = 10
+        else:
+            interval = round(interval * ease_factor * 1.3)
+        ease_factor += 0.15
+        review_count += 1
+
+    now_dt = datetime.now(timezone.utc)
+    next_review_dt = now_dt + timedelta(days=interval)
+
+    update_fields = {
+        "review_count": review_count,
+        "interval": interval,
+        "ease_factor": ease_factor,
+        "last_reviewed": now_dt.isoformat(),
+        "next_review": next_review_dt.isoformat()
+    }
+
+    if doc:
+        coll.update_one({"_id": doc["_id"]}, {"$set": update_fields})
+
+    return {
+        "status": "success",
+        "next_review": next_review_dt.isoformat(),
+        "interval_days": interval,
+        "ease_factor": ease_factor
+    }
 
