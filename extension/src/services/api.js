@@ -177,5 +177,61 @@ export const api = {
             });
             return handleResponse(response);
         }
+    },
+
+    // Compiler
+    compile: {
+        run: async (code, language, stdin = "") => {
+            const response = await fetch(`${BASE_URL}/compile`, {
+                method: 'POST',
+                headers: await getHeaders(),
+                body: JSON.stringify({ code, language, stdin })
+            });
+            return handleResponse(response);
+        }
+    },
+
+    // AI Features
+    ai: {
+        explain: async ({ title, description = "", code = "", language = "", platform = "Coding Platform" }) => {
+            const response = await fetch(`${BASE_URL}/explain`, {
+                method: 'POST',
+                headers: await getHeaders(),
+                body: JSON.stringify({ title, description, code, language, platform })
+            });
+            return handleResponse(response);
+        },
+        summarize: async (text) => {
+            const response = await fetch(`${BASE_URL}/summarize`, {
+                method: 'POST',
+                headers: await getHeaders(),
+                body: JSON.stringify({ text })
+            });
+            return handleResponse(response);
+        },
+        chat: async ({ title, history = [], message, code = "", platform = "Coding Platform", language = "python" }) => {
+            const response = await fetch(`${BASE_URL}/chat`, {
+                method: 'POST',
+                headers: await getHeaders(),
+                body: JSON.stringify({ title, history, message, code, platform, language })
+            });
+            return handleResponse(response);
+        },
+        analyzeError: async ({ title, code = "", error_msg = "", input_data = "", expected = "", actual = "", platform = "Coding Platform", language = "python" }) => {
+            const response = await fetch(`${BASE_URL}/analyze-error`, {
+                method: 'POST',
+                headers: await getHeaders(),
+                body: JSON.stringify({ title, code, error_msg, input_data, expected, actual, platform, language })
+            });
+            return handleResponse(response);
+        },
+        generateFlashcard: async ({ title, platform = "Coding Platform", explanation = "" }) => {
+            const response = await fetch(`${BASE_URL}/generate-flashcard`, {
+                method: 'POST',
+                headers: await getHeaders(),
+                body: JSON.stringify({ title, platform, explanation })
+            });
+            return handleResponse(response);
+        }
     }
 };

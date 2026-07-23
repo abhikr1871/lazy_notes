@@ -3,7 +3,7 @@ import ContentEditable from 'react-contenteditable';
 import {
     Settings, Save, Bold, Italic, Underline, List,
     Heading1, Heading2, Link as LinkIcon, Image as ImageIcon,
-    Type, AlignLeft, Camera, FileText, Mic, Clock, Film, Moon, Sun, LogOut
+    Type, AlignLeft, Camera, FileText, Mic, Clock, Film, Moon, Sun, LogOut, Sparkles
 } from 'lucide-react';
 import { exportToPDF } from '../utils/pdf';
 import { api } from '../../services/api';
@@ -13,6 +13,7 @@ function SmartEditor({ storageKey = 'lazyyNotesContent', onBack, placeholder, si
     const [html, setHtml] = useState("<h1>Enter Title</h1><p>Start typing your notes here...</p>");
     const [status, setStatus] = useState("");
     const [isListening, setIsListening] = useState(false);
+    const [isSummarizing, setIsSummarizing] = useState(false);
     const [isAnimating, setIsAnimating] = useState(false);
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const editorRef = useRef(null);
@@ -231,6 +232,34 @@ function SmartEditor({ storageKey = 'lazyyNotesContent', onBack, placeholder, si
         });
     };
 
+    const handleSummarizeNotes = async () => {
+        const div = document.createElement("div");
+        div.innerHTML = html;
+        const plainText = div.innerText || div.textContent || "";
+        if (!plainText.trim()) {
+            alert("Please write some notes before summarizing!");
+            return;
+        }
+
+        setIsSummarizing(true);
+        setStatus("Summarizing...");
+        try {
+            const data = await api.ai.summarize(plainText);
+            if (data && data.summary) {
+                const summaryHtml = `<br/><hr/><h3>🤖 AI Notes Summary</h3><div>${data.summary.replace(/\n/g, '<br/>')}</div><p><br/></p>`;
+                setHtml(prev => prev + summaryHtml);
+                setStatus("Summarized!");
+                setTimeout(() => setStatus(""), 2000);
+            }
+        } catch (err) {
+            console.error(err);
+            setStatus("Error summarizing");
+            setTimeout(() => setStatus(""), 2000);
+        } finally {
+            setIsSummarizing(false);
+        }
+    };
+
     const handleImageUpload = async (file) => {
         if (!file) return;
 
@@ -289,8 +318,8 @@ function SmartEditor({ storageKey = 'lazyyNotesContent', onBack, placeholder, si
         >
             {/* Compact Header - Replacing the Large Brand Header */}
             {!simpleMode && (
-                <header className="bg-white px-3 py-2 border-b border-slate-100 flex justify-between items-center shrink-0 z-50">
-                    <div className="flex items-center gap-2">
+                <header className="bg-white px-3 py-2 border-b border-slate-100 flex justify-between items-center shrink-0 z-50 relative">
+                    <div className="flex items-center gap-2 z-10">
                         {/* Open Note Button */}
                         <button
                             onClick={() => {/* TODO: Implement Open Notes Logic */ alert("Open Notes feature coming soon!") }}
@@ -299,21 +328,21 @@ function SmartEditor({ storageKey = 'lazyyNotesContent', onBack, placeholder, si
                             <FileText size={14} />
                             <span>Open Note</span>
                         </button>
+                    </div>
 
-                        {/* Center Logo/Title similar to Askify */}
-                        <div className="flex items-center gap-2 ml-2">
-                            <div className="relative group cursor-pointer" onClick={handleLogoClick}>
-                                <div className={`absolute -inset-0.5 bg-gradient-to-r from-violet-600 to-pink-600 rounded-lg blur opacity-25 transition duration-200 ${isAnimating ? 'opacity-75' : 'group-hover:opacity-50'}`}></div>
-                                <img
-                                    src="icons/icon48.png"
-                                    alt="Logo"
-                                    className={`relative w-6 h-6 rounded-md shadow-sm transition-all duration-[1500ms] ease-in-out ${isAnimating ? 'rotate-[1080deg]' : 'group-hover:scale-105'}`}
-                                />
-                            </div>
-                            <h1 className="font-bold text-sm tracking-tight text-slate-800">
-                                LAZZY
-                            </h1>
+                    {/* Centered Logo/Title */}
+                    <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-2 z-0">
+                        <div className="relative group cursor-pointer" onClick={handleLogoClick}>
+                            <div className={`absolute -inset-0.5 bg-gradient-to-r from-violet-600 to-pink-600 rounded-lg blur opacity-25 transition duration-200 ${isAnimating ? 'opacity-75' : 'group-hover:opacity-50'}`}></div>
+                            <img
+                                src="icons/icon48.png"
+                                alt="Logo"
+                                className={`relative w-6 h-6 rounded-md shadow-sm transition-all duration-[1500ms] ease-in-out ${isAnimating ? 'rotate-[1080deg]' : 'group-hover:scale-105'}`}
+                            />
                         </div>
+                        <h1 className="font-extrabold text-sm tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-violet-600 to-pink-600">
+                            LAZZY
+                        </h1>
                     </div>
 
                     <div className="flex items-center space-x-1">
@@ -413,6 +442,9 @@ function SmartEditor({ storageKey = 'lazyyNotesContent', onBack, placeholder, si
                     </button>
                     <button onClick={handleTimestamp} title="Timestamp" className="p-1 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg">
                         <Clock size={16} />
+                    </button>
+                    <button onClick={handleSummarizeNotes} disabled={isSummarizing} title="Summarize Notes with AI" className="p-1 text-slate-500 hover:text-purple-600 hover:bg-purple-50 rounded-lg">
+                        <Sparkles size={16} className="text-purple-600" />
                     </button>
                     <button onClick={() => exportToPDF("note-editor-content")} title="Export PDF" className="p-1 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg">
                         <FileText size={16} />

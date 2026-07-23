@@ -15,38 +15,64 @@ const DIFFICULTY_COLORS = {
     Custom: "bg-slate-100 text-slate-700 border-slate-200"
 };
 
-function LeetCodeManager() {
+function LeetCodeManager({ initialTab }) {
     const [topics, setTopics] = useState(INITIAL_TOPICS);
     const [activeTopic, setActiveTopic] = useState(null);
     const [activeSubtopic, setActiveSubtopic] = useState(null);
-    const [viewMode, setViewMode] = useState('list'); // 'list' (topics), 'subtopics', 'scenario', 'board', 'section'
-    const [activeQuestion, setActiveQuestion] = useState(null); // { id, title, difficulty }
-    const [activeSection, setActiveSection] = useState(null); // "Easy", "Hard", etc.
+    const [viewMode, setViewMode] = useState('list');
+    const [activeQuestion, setActiveQuestion] = useState(null);
+    const [activeSection, setActiveSection] = useState(null);
+    const [workspaceTab, setWorkspaceTab] = useState(initialTab || 'code');
 
     const [newTopic, setNewTopic] = useState("");
     const [newSubtopic, setNewSubtopic] = useState("");
-
-    // Topic Data Structure:
-    // {
-    //   [topicName]: {
-    //      subtopics: {
-    //          [subtopicName]: {
-    //              scenario: "html string",
-    //              sections: { [sectionName]: [ {id, title, difficulty, url} ] }
-    //          }
-    //      }
-    //   }
-    // }
     const [topicData, setTopicData] = useState({});
     const [expandedSections, setExpandedSections] = useState({});
     const [newSectionName, setNewSectionName] = useState("");
     const [isAddingSection, setIsAddingSection] = useState(false);
-
-    // Scenario State (Temp local state before save)
     const [scenarioHtml, setScenarioHtml] = useState("");
     const [isSyncing, setIsSyncing] = useState(false);
     const [isAnimating, setIsAnimating] = useState(false);
     const navigate = useNavigate();
+
+    const openCurrentProblemWorkspace = (targetTab = 'ai') => {
+        setWorkspaceTab(targetTab);
+        if (typeof chrome !== 'undefined' && chrome.tabs) {
+            chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+                if (tabs[0]?.id) {
+                    chrome.tabs.sendMessage(tabs[0].id, { action: "getLeetCodeProblemDetails" }, (response) => {
+                        if (response && response.title && response.title !== "Unknown Problem") {
+                            const question = {
+                                id: response.url || response.title,
+                                title: response.title,
+                                difficulty: response.difficulty || "Medium",
+                                url: response.url
+                            };
+                            setActiveQuestion(question);
+                        }
+                    });
+                }
+            });
+        }
+    };
+
+    useEffect(() => {
+        if (initialTab) {
+            openCurrentProblemWorkspace(initialTab);
+        }
+    }, [initialTab]);
+
+    useEffect(() => {
+        const listener = (request) => {
+            if (request.action === "switchLeetCodeTab") {
+                openCurrentProblemWorkspace(request.tab);
+            }
+        };
+        if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
+            chrome.runtime.onMessage.addListener(listener);
+            return () => chrome.runtime.onMessage.removeListener(listener);
+        }
+    }, []);
 
     const handleLogoClick = () => {
         setIsAnimating(true);
@@ -328,6 +354,7 @@ function LeetCodeManager() {
         return (
             <QuestionWorkspace
                 question={activeQuestion}
+                initialTab={workspaceTab}
                 onBack={() => setActiveQuestion(null)}
             />
         );

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
-import { Plus, ArrowRight, ArrowLeft, ChevronRight, LogOut, Layout, FileText, Tag, Hash } from 'lucide-react';
+import { Plus, ArrowRight, ArrowLeft, ChevronRight, LogOut, Layout, FileText, Tag, Hash, CheckCircle, Info } from 'lucide-react';
 
 import QuestionWorkspace from './CodeforcesQuestionWorkspace';
 
@@ -36,6 +36,8 @@ function CodeforcesManager() {
     const [activeSubtopic, setActiveSubtopic] = useState(null); // Used as "Sub-category" or just "General"
     const [viewMode, setViewMode] = useState('list'); // 'list', 'subtopics', 'board'
     const [activeQuestion, setActiveQuestion] = useState(null);
+    const [activeQuestionTab, setActiveQuestionTab] = useState('code');
+    const [pendingOrganizationQuestion, setPendingOrganizationQuestion] = useState(null);
 
     const [newTopic, setNewTopic] = useState("");
     const [newSubtopic, setNewSubtopic] = useState("");
@@ -134,6 +136,45 @@ function CodeforcesManager() {
             }
         };
         loadTree();
+
+        // DEEP LINKING LOGIC
+        const checkDirectOpen = async (tabAction) => {
+            if (tabAction === 'code' || tabAction === 'notes' || tabAction === 'ai') {
+                const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+                if (!tab) return;
+                chrome.tabs.sendMessage(tab.id, { action: "getCodeforcesProblemDetails" }, (response) => {
+                    if (chrome.runtime.lastError) return;
+                    if (response && response.title) {
+                        const question = {
+                            id: Date.now().toString(),
+                            title: response.title,
+                            difficulty: String(response.rating || response.difficulty || "Unrated"),
+                            url: response.url,
+                            tags: response.tags || []
+                        };
+                        setActiveQuestionTab(tabAction);
+                        setActiveQuestion(question);
+                    }
+                });
+            }
+        };
+
+        const params = new URLSearchParams(window.location.search);
+        const tabAction = params.get('tab');
+        if (tabAction) checkDirectOpen(tabAction);
+
+        const msgListener = (req) => {
+            if (req.action === "switchCodeforcesTab") {
+                checkDirectOpen(req.tab);
+            } else if (req.action === "resetToTopics") {
+                // Clear any active question and return to the topics list
+                setActiveQuestion(null);
+                setActiveQuestionTab('code');
+                setViewMode('list');
+            }
+        };
+        chrome.runtime.onMessage.addListener(msgListener);
+        return () => chrome.runtime.onMessage.removeListener(msgListener);
     }, []);
 
     const syncTreeToCloud = async (currentTopics, currentData) => {
@@ -227,7 +268,45 @@ function CodeforcesManager() {
         setIsAddingSection(false);
     };
 
+    const processAddition = (sectionName, question) => {
+        const currentTopic = topicData[activeTopic];
+        const currentSubtopic = currentTopic.subtopics[activeSubtopic];
+        const currentSectionQuestions = currentSubtopic.sections[sectionName] || [];
+
+        if (currentSectionQuestions.some(q => q.title === question.title)) {
+            alert("Question already in this section!");
+            return;
+        }
+
+        const updatedSections = {
+            ...currentSubtopic.sections,
+            [sectionName]: [...currentSectionQuestions, question]
+        };
+
+        const updatedTopicData = {
+            ...topicData,
+            [activeTopic]: {
+                ...currentTopic,
+                subtopics: {
+                    ...currentTopic.subtopics,
+                    [activeSubtopic]: {
+                        ...currentSubtopic,
+                        sections: updatedSections
+                    }
+                }
+            }
+        };
+
+        saveTopicData(updatedTopicData);
+    };
+
     const addCurrentQuestion = async (sectionName) => {
+        if (pendingOrganizationQuestion) {
+            processAddition(sectionName, pendingOrganizationQuestion);
+            setPendingOrganizationQuestion(null);
+            return;
+        }
+
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
         if (!tab) return;
 
@@ -239,46 +318,15 @@ function CodeforcesManager() {
 
             const { title, difficulty, url, rating, tags } = response;
 
-            // Allow duplicate titles if user really wants, or check simple dupes
-            // We use the 'difficulty' field to store the actual rating string for display
-
             const question = {
                 id: Date.now().toString(),
                 title,
-                difficulty: String(rating || difficulty || "Unrated"), // Store actual rating here
+                difficulty: String(rating || difficulty || "Unrated"),
                 url,
-                tags: tags || [] // Store scraped tags
+                tags: tags || []
             };
 
-            const currentTopic = topicData[activeTopic];
-            const currentSubtopic = currentTopic.subtopics[activeSubtopic];
-            const currentSectionQuestions = currentSubtopic.sections[sectionName] || [];
-
-            if (currentSectionQuestions.some(q => q.title === title)) {
-                alert("Question already in this section!");
-                return;
-            }
-
-            const updatedSections = {
-                ...currentSubtopic.sections,
-                [sectionName]: [...currentSectionQuestions, question]
-            };
-
-            const updatedTopicData = {
-                ...topicData,
-                [activeTopic]: {
-                    ...currentTopic,
-                    subtopics: {
-                        ...currentTopic.subtopics,
-                        [activeSubtopic]: {
-                            ...currentSubtopic,
-                            sections: updatedSections
-                        }
-                    }
-                }
-            };
-
-            saveTopicData(updatedTopicData);
+            processAddition(sectionName, question);
         });
     };
 
@@ -330,7 +378,12 @@ function CodeforcesManager() {
             <QuestionWorkspace
                 question={activeQuestion}
                 onBack={() => setActiveQuestion(null)}
-                context="codeforces"
+                initialTab={activeQuestionTab}
+                onRequireOrganization={() => {
+                    setPendingOrganizationQuestion(activeQuestion);
+                    setActiveQuestion(null);
+                    setViewMode('list'); // Return to tags view so user can choose topic
+                }}
             />
         );
     }
@@ -350,6 +403,24 @@ function CodeforcesManager() {
                         </p>
                     </div>
                 </header>
+
+                {pendingOrganizationQuestion && (
+                    <div className="mx-4 mt-2 bg-emerald-50 border border-emerald-200 text-emerald-700 px-3 py-2 rounded-xl text-xs font-semibold flex flex-col gap-1 items-start shadow-sm animate-fade-in relative shrink-0">
+                        <div className="flex items-center gap-1.5 w-full">
+                            <Info size={14} className="text-emerald-500 shrink-0" />
+                            <span className="truncate flex-1">Click <b>Place Here</b> on any section to bind <b>{pendingOrganizationQuestion.title}</b>!</span>
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setPendingOrganizationQuestion(null);
+                                }}
+                                className="bg-emerald-100 hover:bg-emerald-200 text-emerald-600 px-2 py-1 rounded shadow-sm transition-colors text-[10px]"
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                )}
 
                 <div className="flex-1 overflow-y-auto p-4 space-y-6">
                     {Object.entries(sections)
@@ -399,9 +470,9 @@ function CodeforcesManager() {
                                         </div>
                                         <button
                                             onClick={() => addCurrentQuestion(name)}
-                                            className="text-[10px] font-semibold text-blue-600 hover:text-blue-700 hover:bg-blue-50 px-2 py-1 rounded transition-colors flex items-center gap-1"
+                                            className={`text-[10px] font-semibold px-2 py-1 rounded transition-colors flex items-center gap-1 ${pendingOrganizationQuestion ? 'text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50' : 'text-blue-600 hover:text-blue-700 hover:bg-blue-50'}`}
                                         >
-                                            <Plus size={12} /> Add Current
+                                            {pendingOrganizationQuestion ? <><CheckCircle size={12} /> Place Here</> : <><Plus size={12} /> Add Current</>}
                                         </button>
                                     </div>
                                     <div className="space-y-2">
@@ -490,6 +561,24 @@ function CodeforcesManager() {
                     </div>
                 </header>
 
+                {pendingOrganizationQuestion && (
+                    <div className="mx-4 mt-2 mb-1 bg-emerald-50 border border-emerald-200 text-emerald-700 px-3 py-2 rounded-xl text-xs font-semibold flex flex-col gap-1 items-start shadow-sm animate-fade-in relative shrink-0">
+                        <div className="flex items-center gap-1.5 w-full">
+                            <Info size={14} className="text-emerald-500 shrink-0" />
+                            <span className="truncate flex-1">Select a sub-category to bind <b>{pendingOrganizationQuestion.title}</b>!</span>
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setPendingOrganizationQuestion(null);
+                                }}
+                                className="bg-emerald-100 hover:bg-emerald-200 text-emerald-600 px-2 py-1 rounded shadow-sm transition-colors text-[10px]"
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                )}
+
                 <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
                     {subtopicsList.length === 0 && (
                         <div className="text-center py-10 opacity-60">
@@ -563,6 +652,24 @@ function CodeforcesManager() {
                     <LogOut size={18} strokeWidth={2.5} />
                 </button>
             </header>
+
+            {pendingOrganizationQuestion && (
+                <div className="mx-4 mb-2 bg-emerald-50 border border-emerald-200 text-emerald-700 px-3 py-2 rounded-xl text-xs font-semibold flex flex-col gap-1 items-start shadow-sm animate-fade-in relative">
+                    <div className="flex items-center gap-1.5 w-full">
+                        <Info size={14} className="text-emerald-500 shrink-0" />
+                        <span className="truncate flex-1">Select a tag space to bind <b>{pendingOrganizationQuestion.title}</b>!</span>
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setPendingOrganizationQuestion(null); // Abort organization
+                            }}
+                            className="bg-emerald-100 hover:bg-emerald-200 text-emerald-600 px-2 py-1 rounded shadow-sm transition-colors text-[10px]"
+                        >
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            )}
 
             <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-2.5 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
                 {topics.map(topic => (

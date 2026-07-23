@@ -19,17 +19,43 @@ export default function YoutubeNotes() {
     `;
 
     useEffect(() => {
-        // Get current tab URL to extract Video ID
-        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-            if (tabs[0] && tabs[0].url) {
-                const url = new URL(tabs[0].url);
-                const id = url.searchParams.get("v");
-                if (id) {
-                    setVideoId(id);
-                    setVideoTitle(tabs[0].title.replace(" - YouTube", ""));
+        const updateVideoId = () => {
+            // Ask the active tab's content script for the current URL to bypass iframe tab query limitations
+            chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+                if (tabs[0] && tabs[0].id) {
+                    chrome.tabs.sendMessage(tabs[0].id, { action: "getYoutubeContext" }, (response) => {
+                        if (chrome.runtime.lastError) {
+                            console.log("Could not contact content script");
+                            return;
+                        }
+                        if (response && response.url) {
+                            const url = new URL(response.url);
+                            if (url.hostname.includes("youtube.com")) {
+                                const id = url.searchParams.get("v");
+                                setVideoId(id || null);
+                                setVideoTitle(response.title ? response.title.replace(" - YouTube", "") : "");
+                            }
+                        }
+                    });
                 }
+            });
+        };
+
+        // Initial fetch
+        updateVideoId();
+
+        // Listen for URL changes via Chrome's message system or tab update
+        const tabListener = (tabId, changeInfo, tab) => {
+            if (changeInfo.url || changeInfo.status === 'complete') {
+                updateVideoId();
             }
-        });
+        };
+
+        chrome.tabs.onUpdated.addListener(tabListener);
+
+        return () => {
+            chrome.tabs.onUpdated.removeListener(tabListener);
+        };
     }, []);
 
     const handleLoad = async () => {

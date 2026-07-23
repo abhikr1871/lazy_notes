@@ -1,12 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import SmartEditor from '../../shared/components/SmartEditor';
+import AIExplainerView from '../../shared/components/AIExplainerView';
 import { api } from '../../services/api';
-import { ArrowLeft, Save, Code, FileText, CheckCircle } from 'lucide-react';
+import { ArrowLeft, Save, Code, FileText, CheckCircle, Sparkles } from 'lucide-react';
 
-function QuestionWorkspace({ question, onBack }) {
+function QuestionWorkspace({ question, onBack, initialTab = 'code' }) {
     const [code, setCode] = useState("");
-    const [activeTab, setActiveTab] = useState('code'); // 'code' or 'notes'
+    const [activeTab, setActiveTab] = useState(initialTab); // 'code', 'notes', or 'ai'
     const [status, setStatus] = useState("");
+
+    useEffect(() => {
+        if (initialTab) {
+            setActiveTab(initialTab);
+        }
+    }, [initialTab]);
 
     // Storage keys
     const codeKey = `leetcode_code_${question.id}`;
@@ -21,25 +28,14 @@ function QuestionWorkspace({ question, onBack }) {
 
             // 2. Try Cloud (Combined)
             try {
-                // Use new LeetCode API to get both
                 const slug = question.url ? question.url.split('/problems/')[1]?.split('/')[0] : question.title.toLowerCase().replace(/\s+/g, '-');
-                const data = await api.leetcode.get(slug); // This returns the whole LeetCodeNote object
+                const data = await api.leetcode.get(slug);
 
-                if (data && data.found !== false) { // distinct from "found: false"
+                if (data && data.found !== false) {
                     if (data.code_snippet) {
                         setCode(data.code_snippet);
                         localStorage.setItem(codeKey, data.code_snippet);
                     }
-                    // Note content is loaded via SmartEditor's onLoad prop, 
-                    // but we can also cache it here if needed? 
-                    // Actually, we should just let SmartEditor call its onLoad if we provide it.
-                    // BUT, we want to avoid double fetching. 
-                    // Let's store the full data in a ref or state if we want to share?
-                    // Simpler: Just let them fetch independently or rely on `api.leetcode.get` caching?
-                    // No caching in api.js.
-                    // Okay, let's implement handleLoadNote to use this same data if we fetched it, 
-                    // or just fetch again. Fetching again is safer for now to avoid race conditions 
-                    // with SmartEditor mounting.
                 }
             } catch (e) {
                 console.log("No cloud data found");
@@ -51,16 +47,12 @@ function QuestionWorkspace({ question, onBack }) {
     const handleSaveCode = async () => {
         setStatus("Saving...");
         try {
-            // Validate data
             if (!question.id || !question.title) {
                 console.error("Missing question data");
                 return;
             }
 
-            const currentNote = localStorage.getItem(noteKey) || ""; // Fallback to local
-            // Ideally we get the latest note content. 
-            // If SmartEditor is active, it has the state. 
-            // If not, localStorage is the best bet.
+            const currentNote = localStorage.getItem(noteKey) || "";
 
             const payload = {
                 problem_slug: question.url ? question.url.split('/problems/')[1]?.split('/')[0] : question.title.toLowerCase().replace(/\s+/g, '-'),
@@ -84,14 +76,13 @@ function QuestionWorkspace({ question, onBack }) {
     };
 
     const handleSaveNote = async (noteContent) => {
-        // When SmartEditor saves, we also want to preserve the current code.
         try {
             const payload = {
                 problem_slug: question.url ? question.url.split('/problems/')[1]?.split('/')[0] : question.title.toLowerCase().replace(/\s+/g, '-'),
                 title: question.title,
                 subtopics: [],
                 note_content: noteContent,
-                code_snippet: code, // Use current state code
+                code_snippet: code,
                 language: "python",
                 images: []
             };
@@ -111,6 +102,13 @@ function QuestionWorkspace({ question, onBack }) {
         } catch (e) {
             return null;
         }
+    };
+
+    const handleAppendAIToNotes = async (htmlContent) => {
+        const existing = localStorage.getItem(noteKey) || "";
+        const updated = existing + htmlContent;
+        localStorage.setItem(noteKey, updated);
+        await handleSaveNote(updated);
     };
 
     return (
@@ -139,20 +137,27 @@ function QuestionWorkspace({ question, onBack }) {
             </header>
 
             {/* Tabs */}
-            <div className="flex px-4 pt-4 gap-4 shrink-0 bg-slate-50">
+            <div className="flex px-4 pt-4 gap-2 shrink-0 bg-slate-50 overflow-x-auto">
                 <button
                     onClick={() => setActiveTab('code')}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-t-xl text-sm font-bold transition-all ${activeTab === 'code' ? 'bg-white text-indigo-600 shadow-sm border-t border-x border-slate-200' : 'text-slate-500 hover:text-indigo-500'}`}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-t-xl text-xs font-bold transition-all ${activeTab === 'code' ? 'bg-white text-indigo-600 shadow-sm border-t border-x border-slate-200' : 'text-slate-500 hover:text-indigo-500'}`}
                 >
-                    <Code size={16} strokeWidth={2.5} />
+                    <Code size={15} strokeWidth={2.5} />
                     Code Solution
                 </button>
                 <button
                     onClick={() => setActiveTab('notes')}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-t-xl text-sm font-bold transition-all ${activeTab === 'notes' ? 'bg-white text-indigo-600 shadow-sm border-t border-x border-slate-200' : 'text-slate-500 hover:text-indigo-500'}`}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-t-xl text-xs font-bold transition-all ${activeTab === 'notes' ? 'bg-white text-indigo-600 shadow-sm border-t border-x border-slate-200' : 'text-slate-500 hover:text-indigo-500'}`}
                 >
-                    <FileText size={16} strokeWidth={2.5} />
+                    <FileText size={15} strokeWidth={2.5} />
                     Special Notes
+                </button>
+                <button
+                    onClick={() => setActiveTab('ai')}
+                    className={`flex items-center gap-1.5 px-3 py-2 rounded-t-xl text-xs font-bold transition-all ${activeTab === 'ai' ? 'bg-indigo-900 text-purple-200 shadow-sm border-t border-x border-indigo-800' : 'text-purple-600 hover:text-purple-700 bg-purple-50/50'}`}
+                >
+                    <Sparkles size={14} className="text-purple-400" />
+                    AI Explainer
                 </button>
             </div>
 
@@ -171,13 +176,22 @@ function QuestionWorkspace({ question, onBack }) {
                             {code.length} chars
                         </div>
                     </div>
-                ) : (
+                ) : activeTab === 'notes' ? (
                     <SmartEditor
                         storageKey={noteKey}
                         simpleMode={true}
                         placeholder="Write your logic, complexity analysis, or special notes here..."
                         onSave={handleSaveNote}
                         onLoad={handleLoadNote}
+                    />
+                ) : (
+                    <AIExplainerView
+                        title={question.title}
+                        platform="LeetCode"
+                        currentCode={code}
+                        language="python"
+                        noteKey={noteKey}
+                        onAppendToNotes={handleAppendAIToNotes}
                     />
                 )}
             </div>

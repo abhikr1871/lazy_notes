@@ -3,9 +3,13 @@ uvicorn
 pydantic
 python-dotenv
 requests
+email-validator
+google-genai
 google-generativeai
 openai
 pymongo
 passlib[bcrypt]
 python-jose[cryptography]
 python-multipart
+httpx
+boto3

@@ -8,15 +8,21 @@ const IS_CODEFORCES = window.location.hostname.includes("codeforces.com");
 
 // --- YouTube Sidebar Logic ---
 function toggleYouTubeSidebar() {
-    const secondary = document.querySelector("#secondary");
+    const secondary = document.querySelector("ytd-watch-flexy #secondary");
     if (!secondary) {
-        alert("Could not find YouTube sidebar (secondary column).");
+        console.warn("Could not find YouTube sidebar (secondary column).");
         return;
     }
 
     let iframe = document.getElementById("lazyy-sidebar-yt");
     if (iframe) {
-        // More robust toggle: check computed style if inline style is empty
+        if (iframe.parentElement !== secondary) {
+            // Reattach to the active secondary container during SPA navigation
+            secondary.insertBefore(iframe, secondary.firstChild);
+            iframe.style.display = "block";
+            return;
+        }
+
         const currentDisplay = iframe.style.display || window.getComputedStyle(iframe).display;
         iframe.style.display = currentDisplay === "none" ? "block" : "none";
     } else {
@@ -24,7 +30,6 @@ function toggleYouTubeSidebar() {
         iframe.id = "lazyy-sidebar-yt";
         iframe.src = chrome.runtime.getURL("sidepanel.html");
 
-        // Explicitly set display: block to ensure toggle logic works consistently
         iframe.style.cssText = `
             width: 100%; 
             height: 600px; 
@@ -40,37 +45,46 @@ function toggleYouTubeSidebar() {
 }
 
 function injectYouTubeButton() {
-    if (document.getElementById("lazyy-notes-button")) return;
-    const target = document.querySelector("#owner");
-    if (target) {
-        const btn = document.createElement("button");
-        btn.id = "lazyy-notes-button";
-        btn.innerHTML = "🦉 Open Lazzy";
-        btn.style.cssText = `
-            background: linear-gradient(135deg, #7c3aed 0%, #db2777 100%);
-            color: white; border: 1px solid rgba(255,255,255,0.2); 
-            padding: 8px 16px; margin-left: 10px; border-radius: 20px; 
-            font-weight: 600; cursor: pointer; font-size: 13px;
-            box-shadow: 0 4px 6px -1px rgba(99, 102, 241, 0.3);
-            transition: all 0.2s ease; display: inline-flex; align-items: center; gap: 6px;
-        `;
+    const target = document.querySelector("ytd-watch-metadata #owner");
+    if (!target) return;
 
-        // Fix: Use a proper event handler with stopPropagation to prevent YouTube interference
-        btn.onclick = (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            toggleYouTubeSidebar();
-        };
-
-        target.appendChild(btn);
+    let btn = document.getElementById("lazyy-notes-button");
+    if (btn) {
+        if (btn.parentElement !== target) {
+            target.appendChild(btn);
+        }
+        return;
     }
+
+    btn = document.createElement("button");
+    btn.id = "lazyy-notes-button";
+    btn.innerHTML = "🦉 Open Lazzy";
+    btn.style.cssText = `
+        background: linear-gradient(135deg, #7c3aed 0%, #db2777 100%);
+        color: white; border: 1px solid rgba(255,255,255,0.2); 
+        padding: 8px 16px; margin-left: 10px; border-radius: 20px; 
+        font-weight: 600; cursor: pointer; font-size: 13px;
+        box-shadow: 0 4px 6px -1px rgba(99, 102, 241, 0.3);
+        transition: all 0.2s ease; display: inline-flex; align-items: center; gap: 6px;
+    `;
+
+    btn.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleYouTubeSidebar();
+    };
+
+    target.appendChild(btn);
 }
 
 // --- LeetCode Sidebar Logic ---
-function toggleLeetCodeSidebar() {
+function toggleLeetCodeSidebar(tab) {
     let container = document.getElementById("lazyy-leetcode-container");
     if (container) {
         container.classList.toggle("lazyy-visible");
+        if (container.classList.contains("lazyy-visible") && tab) {
+            chrome.runtime.sendMessage({ action: "switchLeetCodeTab", tab: tab });
+        }
     } else {
         container = document.createElement("div");
         container.id = "lazyy-leetcode-container";
@@ -84,7 +98,10 @@ function toggleLeetCodeSidebar() {
         `;
 
         const iframe = document.createElement("iframe");
-        iframe.src = chrome.runtime.getURL("sidepanel.html?context=leetcode");
+        const iframeSrc = tab
+            ? chrome.runtime.getURL('sidepanel.html?context=leetcode&tab=' + tab)
+            : chrome.runtime.getURL('sidepanel.html?context=leetcode');
+        iframe.src = iframeSrc;
         iframe.style.cssText = `
             width: 100%; height: 100%; border: none;
             border-top-left-radius: 10px;
@@ -104,14 +121,18 @@ function toggleLeetCodeSidebar() {
         container.appendChild(iframe);
         document.body.appendChild(container);
 
-        // Add style for visibility toggle
         const style = document.createElement("style");
         style.textContent = `
             #lazyy-leetcode-container.lazyy-visible { right: 0 !important; }
         `;
         document.head.appendChild(style);
 
-        setTimeout(() => container.classList.add("lazyy-visible"), 10);
+        setTimeout(() => {
+            container.classList.add("lazyy-visible");
+            if (tab) {
+                chrome.runtime.sendMessage({ action: "switchLeetCodeTab", tab: tab });
+            }
+        }, 10);
     }
 }
 
@@ -149,22 +170,20 @@ function getLeetCodeDifficulty() {
 }
 
 function injectLeetCodeButton() {
+    const path = window.location.pathname;
+    if (!path.startsWith('/problems/') || path.includes('/problemset')) return;
     if (document.getElementById("lazyy-lc-plus-btn")) return;
 
-    // Attempt multiple selectors for LeetCode title
-    // Based on the user image "1161. Maximum Level Sum...", it's likely a standard title class
     const titleSelectors = [
-        'div[data-cy="question-title"]', // Common Cy Selector
-        '.text-title-large', // New UI
-        'span.text-2xl', // Another New UI variant
-        '.mr-2.text-xl', // And another
-        'div.flex.items-center div.text-title-large',
-        'a[href^="/problems/"]' // Fallback to problem link if title specific fails
+        'div[data-cy="question-title"]',
+        '.text-title-large',
+        'span.text-2xl',
+        '.mr-2.text-xl',
+        'div.flex.items-center div.text-title-large'
     ];
 
     let titleElement = null;
     for (const selector of titleSelectors) {
-        // We look for something that contains text and looks like a title
         const candidates = document.querySelectorAll(selector);
         for (const candidate of candidates) {
             if (candidate.innerText && candidate.innerText.length > 5) {
@@ -176,16 +195,15 @@ function injectLeetCodeButton() {
     }
 
     if (titleElement) {
+        const difficulty = getLeetCodeDifficulty();
+        let difficultyColor = "#ffa116";
+
+        if (difficulty === "Easy") difficultyColor = "#00b8a3";
+        else if (difficulty === "Hard") difficultyColor = "#ff375f";
+
+        // Notes Button
         const btn = document.createElement("button");
         btn.id = "lazyy-lc-plus-btn";
-
-        // --- Difficulty Detection ---
-        const difficulty = getLeetCodeDifficulty();
-        let difficultyColor = "#ffa116"; // Default Yellow (Medium)
-
-        if (difficulty === "Easy") difficultyColor = "#00b8a3"; // Green
-        else if (difficulty === "Hard") difficultyColor = "#ff375f"; // Red
-
         btn.innerHTML = `
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;">
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
@@ -215,24 +233,50 @@ function injectLeetCodeButton() {
             vertical-align: middle;
             box-shadow: 0 2px 4px rgba(0,0,0,0.2);
         `;
-        btn.onmouseover = () => {
-            btn.style.transform = "translateY(-1px)";
-            btn.style.backgroundColor = "#383838";
-            btn.style.boxShadow = "0 4px 8px rgba(0,0,0,0.3)";
-        };
-        btn.onmouseout = () => {
-            btn.style.transform = "translateY(0)";
-            btn.style.backgroundColor = "#2d2d2d";
-            btn.style.boxShadow = "0 2px 4px rgba(0,0,0,0.2)";
-        };
         btn.onclick = (e) => {
             e.preventDefault();
             e.stopPropagation();
-            toggleLeetCodeSidebar();
+            toggleLeetCodeSidebar('notes');
         };
 
-        // Ensure flex layout for the title to align button properly
-        // Check computed style first to avoid breaking existing layout if not flex
+        // AI Button
+        const aiBtn = document.createElement("button");
+        aiBtn.id = "lazyy-lc-ai-btn";
+        aiBtn.innerHTML = "✨ AI";
+        aiBtn.title = "Generate AI Problem Breakdown";
+        aiBtn.style.cssText = `
+            margin-left: 8px;
+            padding: 6px 14px;
+            border-radius: 20px;
+            background: linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%);
+            color: #ffffff;
+            border: 1px solid rgba(255,255,255,0.2);
+            font-size: 13px;
+            font-weight: 700;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            line-height: 1;
+            white-space: nowrap;
+            transition: all 0.2s ease;
+            vertical-align: middle;
+            box-shadow: 0 2px 6px rgba(124, 58, 237, 0.4);
+        `;
+        aiBtn.onmouseover = () => {
+            aiBtn.style.transform = "translateY(-1px)";
+            aiBtn.style.boxShadow = "0 4px 10px rgba(124, 58, 237, 0.6)";
+        };
+        aiBtn.onmouseout = () => {
+            aiBtn.style.transform = "translateY(0)";
+            aiBtn.style.boxShadow = "0 2px 6px rgba(124, 58, 237, 0.4)";
+        };
+        aiBtn.onclick = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            toggleLeetCodeSidebar('ai');
+        };
+
         const style = window.getComputedStyle(titleElement);
         if (style.display !== 'flex') {
             titleElement.style.display = 'inline-flex';
@@ -242,29 +286,40 @@ function injectLeetCodeButton() {
         }
 
         titleElement.appendChild(btn);
+        titleElement.appendChild(aiBtn);
     }
 }
 
 // --- Codeforces Sidebar Logic ---
-function toggleCodeforcesSidebar() {
+function toggleCodeforcesSidebar(tab) {
     let container = document.getElementById("lazyy-codeforces-container");
     if (container) {
         container.classList.toggle("lazyy-visible");
     } else {
         container = document.createElement("div");
         container.id = "lazyy-codeforces-container";
-        // Dark theme for Codeforces? Or just white. Codeforces is mostly white/light gray.
         container.style.cssText = `
-            position: fixed; top: 0; right: -420px; width: 400px; height: 100vh;
-            background: white; z-index: 10000; transition: right 0.3s ease;
-            box-shadow: -5px 0 15px rgba(0,0,0,0.1); border-left: 1px solid #eee;
+            position: fixed; top: 0; right: 0; width: 400px; height: 100vh;
+            background: white; z-index: 10000; transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: -5px 0 25px rgba(0,0,0,0.15); border-left: 1px solid #eee;
             display: flex; flex-direction: column;
-            border-top-left-radius: 10px;
-            border-bottom-left-radius: 10px;
+            border-top-left-radius: 12px;
+            border-bottom-left-radius: 12px;
+            transform: translateX(105%);
         `;
 
+        chrome.storage.local.get(['lazyy_cf_width'], (result) => {
+            if (result.lazyy_cf_width) {
+                container.style.width = result.lazyy_cf_width;
+            }
+        });
+
         const iframe = document.createElement("iframe");
-        iframe.src = chrome.runtime.getURL("sidepanel.html?context=codeforces");
+        // Only append tab param if explicitly provided (e.g. 'code')
+        const iframeSrc = tab
+            ? chrome.runtime.getURL('sidepanel.html?context=codeforces&tab=' + tab)
+            : chrome.runtime.getURL('sidepanel.html?context=codeforces');
+        iframe.src = iframeSrc;
         iframe.style.cssText = `
             width: 100%; height: 100%; border: none;
             border-top-left-radius: 10px;
@@ -280,13 +335,56 @@ function toggleCodeforcesSidebar() {
         `;
         closeBtn.onclick = () => container.classList.remove("lazyy-visible");
 
+        const resizer = document.createElement("div");
+        resizer.className = "lazyy-resizer";
+        resizer.style.cssText = `
+            position: absolute; left: 0; top: 0; width: 6px; height: 100%;
+            cursor: ew-resize; z-index: 10001; background: transparent;
+            transition: background 0.2s; border-top-left-radius: 12px; border-bottom-left-radius: 12px;
+        `;
+
+        resizer.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            const startX = e.clientX;
+            const startWidth = parseInt(document.defaultView.getComputedStyle(container).width, 10);
+
+            container.style.transition = 'none';
+            iframe.style.pointerEvents = 'none';
+            resizer.style.background = 'rgba(99, 102, 241, 0.8)';
+
+            const onMouseMove = (moveEvent) => {
+                const newWidth = startWidth - (moveEvent.clientX - startX);
+                if (newWidth > 350 && newWidth < window.innerWidth * 0.8) {
+                    container.style.width = newWidth + 'px';
+                }
+            };
+
+            const onMouseUp = () => {
+                container.style.transition = 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)';
+                iframe.style.pointerEvents = 'auto';
+                resizer.style.background = 'transparent';
+
+                document.removeEventListener('mousemove', onMouseMove);
+                document.removeEventListener('mouseup', onMouseUp);
+
+                chrome.storage.local.set({ 'lazyy_cf_width': container.style.width });
+            };
+
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
+        });
+
+        resizer.onmouseover = () => { if (iframe.style.pointerEvents !== 'none') resizer.style.background = 'rgba(99, 102, 241, 0.4)'; };
+        resizer.onmouseout = () => { if (iframe.style.pointerEvents !== 'none') resizer.style.background = 'transparent'; };
+
+        container.appendChild(resizer);
         container.appendChild(closeBtn);
         container.appendChild(iframe);
         document.body.appendChild(container);
 
         const style = document.createElement("style");
         style.textContent = `
-            #lazyy-codeforces-container.lazyy-visible { right: 0 !important; }
+            #lazyy-codeforces-container.lazyy-visible { transform: translateX(0) !important; }
         `;
         document.head.appendChild(style);
 
@@ -357,7 +455,16 @@ function injectCodeforcesButton() {
             e.preventDefault();
             e.stopPropagation();
             console.log("Lazzy: Toggling Codeforces sidebar");
-            toggleCodeforcesSidebar();
+            
+            const existingContainer = document.getElementById("lazyy-codeforces-container");
+            if (!existingContainer || !existingContainer.classList.contains("lazyy-visible")) {
+                toggleCodeforcesSidebar();
+            }
+            
+            // Always reset sidebar to the Topics list view
+            setTimeout(() => {
+                chrome.runtime.sendMessage({ action: "resetToTopics" });
+            }, 100);
         };
 
         // If target is the .title div, check if we should append inside or after
@@ -435,6 +542,160 @@ function injectCodeforcesButton() {
     }
 }
 
+
+function injectCodeforcesCompileButton() {
+    if (document.getElementById("lazyy-cf-compile-btn")) return;
+
+    const selectors = [
+        ".problem-statement .header .title",
+        ".problem-statement .header",
+        "#pageContent .title",
+        "div.title"
+    ];
+
+    let targetEl = null;
+    for (const sel of selectors) {
+        const el = document.querySelector(sel);
+        if (el) {
+            targetEl = el;
+            break;
+        }
+    }
+
+    if (targetEl) {
+        const compileBtn = document.createElement("a");
+        compileBtn.id = "lazyy-cf-compile-btn";
+        compileBtn.innerHTML = "⚡ Code";
+        compileBtn.style.cssText = `
+            margin-left: 8px;
+            padding: 5px 14px;
+            border-radius: 20px;
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+            color: white;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+            vertical-align: middle;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            position: relative; 
+            z-index: 100;
+            border: 1px solid rgba(255,255,255,0.2);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            text-decoration: none;
+            line-height: 1.2;
+            transition: all 0.2s ease;
+        `;
+
+        compileBtn.onmouseover = () => {
+            compileBtn.style.transform = "translateY(-1px)";
+            compileBtn.style.boxShadow = "0 4px 8px rgba(0,0,0,0.2)";
+            compileBtn.style.filter = "brightness(1.1)";
+        };
+        compileBtn.onmouseout = () => {
+            compileBtn.style.transform = "translateY(0)";
+            compileBtn.style.boxShadow = "0 2px 4px rgba(0,0,0,0.15)";
+            compileBtn.style.filter = "none";
+        };
+
+        compileBtn.onclick = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+
+            const existingContainer = document.getElementById("lazyy-codeforces-container");
+            if (!existingContainer || !existingContainer.classList.contains("lazyy-visible")) {
+                toggleCodeforcesSidebar('code');
+            }
+            
+            // Broadcast intent to React Sidebar (also handles case where sidebar already open)
+            setTimeout(() => {
+                chrome.runtime.sendMessage({ action: "switchCodeforcesTab", tab: "code" });
+            }, 100);
+        };
+
+        targetEl.appendChild(compileBtn);
+    }
+}
+
+function injectCodeforcesAIButton() {
+    if (document.getElementById("lazyy-cf-ai-btn")) return;
+
+    const selectors = [
+        ".problem-statement .header .title",
+        ".problem-statement .header",
+        "#pageContent .title",
+        "div.title"
+    ];
+
+    let targetEl = null;
+    for (const sel of selectors) {
+        const el = document.querySelector(sel);
+        if (el) {
+            targetEl = el;
+            break;
+        }
+    }
+
+    if (targetEl) {
+        const aiBtn = document.createElement("a");
+        aiBtn.id = "lazyy-cf-ai-btn";
+        aiBtn.innerHTML = "✨ AI";
+        aiBtn.title = "Generate AI Problem Breakdown";
+        aiBtn.style.cssText = `
+            margin-left: 8px;
+            padding: 5px 14px;
+            border-radius: 20px;
+            background: linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%);
+            color: #ffffff;
+            font-size: 13px;
+            font-weight: 700;
+            cursor: pointer;
+            box-shadow: 0 2px 6px rgba(124, 58, 237, 0.4);
+            vertical-align: middle;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            position: relative; 
+            z-index: 100;
+            border: 1px solid rgba(255,255,255,0.2);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            text-decoration: none;
+            line-height: 1.2;
+            white-space: nowrap;
+            transition: all 0.2s ease;
+        `;
+
+        aiBtn.onmouseover = () => {
+            aiBtn.style.transform = "translateY(-1px)";
+            aiBtn.style.boxShadow = "0 4px 10px rgba(124, 58, 237, 0.6)";
+            aiBtn.style.filter = "brightness(1.1)";
+        };
+        aiBtn.onmouseout = () => {
+            aiBtn.style.transform = "translateY(0)";
+            aiBtn.style.boxShadow = "0 2px 6px rgba(124, 58, 237, 0.4)";
+            aiBtn.style.filter = "none";
+        };
+
+        aiBtn.onclick = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+
+            const existingContainer = document.getElementById("lazyy-codeforces-container");
+            if (!existingContainer || !existingContainer.classList.contains("lazyy-visible")) {
+                toggleCodeforcesSidebar('ai');
+            }
+
+            setTimeout(() => {
+                chrome.runtime.sendMessage({ action: "switchCodeforcesTab", tab: "ai" });
+            }, 100);
+        };
+
+        targetEl.appendChild(aiBtn);
+    }
+}
+
 // --- Initialization ---
 const observer = new MutationObserver(() => {
     if (IS_YOUTUBE && window.location.href.includes("youtube.com/watch")) {
@@ -445,6 +706,8 @@ const observer = new MutationObserver(() => {
     }
     if (IS_CODEFORCES && (window.location.href.includes("/problem/") || window.location.href.includes("/problemset/"))) {
         injectCodeforcesButton();
+        injectCodeforcesCompileButton();
+        injectCodeforcesAIButton();
     }
 });
 
@@ -461,6 +724,8 @@ if (IS_CODEFORCES) {
     const cfInterval = setInterval(() => {
         if (window.location.href.includes("/problem/") || window.location.href.includes("/problemset/")) {
             injectCodeforcesButton();
+            injectCodeforcesCompileButton();
+            injectCodeforcesAIButton();
         }
     }, 1000); // Check every second
 
@@ -468,8 +733,44 @@ if (IS_CODEFORCES) {
     setTimeout(() => clearInterval(cfInterval), 30000);
 }
 
+function getLeetCodeCode() {
+    try {
+        const monacoLines = document.querySelectorAll('.monaco-editor .view-line');
+        if (monacoLines && monacoLines.length > 0) {
+            const lines = [];
+            monacoLines.forEach(line => lines.push(line.innerText));
+            const codeText = lines.join('\n');
+            if (codeText.trim().length > 0) return codeText;
+        }
+    } catch (e) {}
+
+    const textarea = document.querySelector('textarea.inputarea') || document.querySelector('textarea');
+    if (textarea && textarea.value) return textarea.value;
+
+    return "";
+}
+
+function getCodeforcesCode() {
+    const sourceArea = document.querySelector('#source') || document.querySelector('textarea[name="source"]');
+    if (sourceArea && sourceArea.value) return sourceArea.value;
+
+    const aceLines = document.querySelectorAll('.ace_line');
+    if (aceLines && aceLines.length > 0) {
+        const lines = [];
+        aceLines.forEach(line => lines.push(line.innerText));
+        return lines.join('\n');
+    }
+
+    return "";
+}
+
 // Listen for messages from extension components
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (request.action === "getYoutubeContext") {
+        sendResponse({ url: window.location.href, title: document.title });
+        return true;
+    }
+
     if (request.action === "getPageText") {
         sendResponse({ text: document.body.innerText });
     }
@@ -501,7 +802,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return true;
     }
     if (request.action === "getLeetCodeProblemDetails") {
-        // Reuse logic from injectLeetCodeButton to find title and difficulty
         const titleSelectors = [
             'div[data-cy="question-title"]',
             '.text-title-large',
@@ -515,8 +815,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         for (const selector of titleSelectors) {
             const el = document.querySelector(selector);
             if (el && el.innerText && el.innerText.length > 5) {
-                title = el.innerText.split('. ').pop(); // Remove number if present e.g. "1. Two Sum" -> "Two Sum"
-                // Actually usually we want the full title. Let's keep it simple.
                 title = el.innerText;
                 break;
             }
@@ -527,7 +825,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         sendResponse({
             title: title,
             difficulty: difficulty,
-            url: window.location.href
+            url: window.location.href,
+            code: getLeetCodeCode()
         });
         return true;
     }
@@ -537,34 +836,31 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         const titleEl = document.querySelector(".problem-statement .header .title");
         let title = titleEl ? titleEl.innerText : "Unknown Problem";
 
-        let difficulty = "Unrated"; // Default if no rating found
+        let difficulty = "Unrated";
         let rating = 0;
         let tags = [];
 
-        // Difficulty in Codeforces is rating, present in sidebar .tag-box
-        // Tags are also in .tag-box
         const tagElements = document.querySelectorAll(".tag-box");
         for (const tag of tagElements) {
             if (tag.title === "Difficulty") {
                 const text = tag.innerText.trim();
-                // text like "*800", "*1200"
                 const num = parseInt(text.replace('*', ''));
                 if (!isNaN(num)) {
                     rating = num;
                     difficulty = num.toString();
                 }
             } else {
-                // Collect other tags
                 tags.push(tag.innerText.trim());
             }
         }
 
         sendResponse({
             title: title,
-            difficulty: difficulty, // Now returns the actual rating string e.g. "1200" or "Unrated"
+            difficulty: difficulty,
             url: window.location.href,
             rating: rating,
-            tags: tags
+            tags: tags,
+            code: getCodeforcesCode()
         });
         return true;
     }

@@ -2,13 +2,14 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from services.ai_service import AIService
 # from ai_service import AIService
-from auth import get_password_hash, verify_password, create_access_token, get_current_user, ACCESS_TOKEN_EXPIRE_MINUTES
+from auth import get_password_hash, verify_password, create_access_token, get_current_user, get_optional_user, ACCESS_TOKEN_EXPIRE_MINUTES
 from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File
 from datetime import timedelta
 from database import users_collection, trees_collection, notes_collection, leetcode_collection, youtube_collection, codeforces_collection
-from models import UserCreate, UserLogin, Token, TreeSync, NoteSync, LeetCodeNote, YoutubeNote, CodeforcesNote
+from models import UserCreate, UserLogin, Token, TreeSync, NoteSync, LeetCodeNote, YoutubeNote, CodeforcesNote, CompileRequest
 from services.s3_service import S3Service
 import uuid
+import httpx
 
 app = FastAPI(title="IntelliAsk AI Backend")
 
@@ -215,6 +216,59 @@ async def get_codeforces_note(problem_id: str, current_user = Depends(get_curren
         return doc
     return {"found": False}
 
+@app.post("/compile")
+async def compile_code(req: CompileRequest, current_user = Depends(get_current_user)):
+    jdoodle_url = "https://api.jdoodle.com/v1/execute"
+    
+    # Map frontend language selection to JDoodle's expected identifiers
+    lang_map = {
+        "cpp": {"language": "cpp17", "versionIndex": "1"}, # C++ 17
+        "python": {"language": "python3", "versionIndex": "4"}, # Python 3.9
+        "java": {"language": "java", "versionIndex": "4"}, # Java 17
+        "js": {"language": "nodejs", "versionIndex": "4"} # Node 17
+    }
+    
+    selected_lang = lang_map.get(req.language)
+    if not selected_lang:
+        raise HTTPException(status_code=400, detail="Unsupported language")
+
+    payload = {
+        "clientId": "3c10f91d79243652f5286cf82d99def6",
+        "clientSecret": "61c0d712df756c921bbad9969105c0b99037bb70578ed93aae1532a702399e09",
+        "script": req.code,
+        "stdin": req.stdin or "",
+        "language": selected_lang["language"],
+        "versionIndex": selected_lang["versionIndex"]
+    }
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(jdoodle_url, json=payload, timeout=20.0)
+            response.raise_for_status()
+            jdoodle_res = response.json()
+            
+            # JDoodle response mapping
+            # { "output": "...", "statusCode": 200, "memory": "...", "cpuTime": "..." }
+            # Our UI expects: { run: { stdout: "...", stderr: "..." }, compile: { output: "..." } }
+            stdout = jdoodle_res.get("output", "")
+            stderr = ""
+            
+            # JDoodle puts runtime errors or compilation errors directly in "output"
+            # It's hard to distinguish perfectly without checking strings, but we can pass it as stdout
+            # If the status code indicates an error (not strictly HTTP, but internal), handling varies.
+            
+            return {
+                "run": {
+                    "stdout": stdout,
+                    "stderr": stderr
+                },
+                "compile": {
+                    "output": "" # JDoodle doesn't cleanly separate this in free tier response
+                }
+            }
+        except httpx.HTTPError as e:
+            raise HTTPException(status_code=500, detail=f"Compilation service error: {str(e)}")
+
 @app.post("/notes")
 async def sync_note(note: NoteSync, current_user = Depends(get_current_user)):
     user_id = current_user["username"]
@@ -234,26 +288,82 @@ async def get_note(note_id: str, current_user = Depends(get_current_user)):
     return {"content": None}
 
 @app.post("/summarize")
-def summarize():
-    return {"message": "Summarize endpoint not implemented yet"}
+async def summarize(request: dict, current_user = Depends(get_optional_user)):
+    text = request.get("text", "")
+    summary = ai_service.summarize_text(text)
+    return {"summary": summary}
 
 @app.post("/explain")
-def explain():
-    return {"message": "Explain endpoint not implemented yet"}
+async def explain(request: dict, current_user = Depends(get_optional_user)):
+    title = request.get("title", "")
+    description = request.get("description", "")
+    code = request.get("code", "")
+    platform = request.get("platform", "Coding Platform")
+    language = request.get("language", "")
+    
+    explanation = ai_service.explain_problem(
+        title=title,
+        description=description,
+        code=code,
+        platform=platform,
+        language=language
+    )
+    return {"explanation": explanation}
 
 @app.post("/chat")
-async def chat(request: dict):
-    # Basic echo for now, or use AIService
-    user_message = request.get("message", "")
-    context = request.get("context", "")
-    
-    # Placeholder response
-    ai_response = f"Simulated AI Response to: '{user_message}' with context length {len(context)}"
-    
-    # Use real service if implemented
-    # ai_response = ai_service.chat(user_message, context)
-    
-    return {"reply": ai_response}
+async def chat(request: dict, current_user = Depends(get_optional_user)):
+    title = request.get("title", "")
+    history = request.get("history", [])
+    message = request.get("message", "")
+    code = request.get("code", "")
+    platform = request.get("platform", "Coding Platform")
+    language = request.get("language", "python")
+
+    reply = ai_service.chat_followup(
+        title=title,
+        history=history,
+        message=message,
+        code=code,
+        platform=platform,
+        language=language
+    )
+    return {"reply": reply}
+
+@app.post("/analyze-error")
+async def analyze_error(request: dict, current_user = Depends(get_optional_user)):
+    title = request.get("title", "")
+    code = request.get("code", "")
+    error_msg = request.get("error_msg", "")
+    input_data = request.get("input_data", "")
+    expected = request.get("expected", "")
+    actual = request.get("actual", "")
+    platform = request.get("platform", "Coding Platform")
+    language = request.get("language", "python")
+
+    analysis = ai_service.analyze_error(
+        title=title,
+        code=code,
+        error_msg=error_msg,
+        input_data=input_data,
+        expected=expected,
+        actual=actual,
+        platform=platform,
+        language=language
+    )
+    return {"analysis": analysis}
+
+@app.post("/generate-flashcard")
+async def generate_flashcard(request: dict, current_user = Depends(get_optional_user)):
+    title = request.get("title", "")
+    platform = request.get("platform", "Coding Platform")
+    explanation = request.get("explanation", "")
+
+    flashcards = ai_service.generate_flashcards(
+        title=title,
+        platform=platform,
+        explanation=explanation
+    )
+    return {"flashcards": flashcards}
 
 @app.post("/register", response_model=Token)
 async def register(user: UserCreate):

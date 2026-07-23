@@ -55,3 +55,8 @@ class CodeforcesNote(BaseModel):
     code_snippet: Optional[str] = ""
     language: Optional[str] = "cpp"
     images: list = []
+
+class CompileRequest(BaseModel):
+    code: str
+    language: str
+    stdin: Optional[str] = ""
