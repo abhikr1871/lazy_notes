@@ -777,7 +777,32 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     if (request.action === "getVideoTime") {
         const video = document.querySelector("video");
-        sendResponse({ time: video ? new Date(video.currentTime * 1000).toISOString().substring(14, 19) : null });
+        sendResponse({
+            time: video ? new Date(video.currentTime * 1000).toISOString().substring(14, 19) : null,
+            seconds: video ? Math.floor(video.currentTime) : 0
+        });
+    }
+
+    if (request.action === "seekVideoTime") {
+        const video = document.querySelector("video");
+        if (video) {
+            let secs = request.seconds;
+            if (secs === undefined && request.timeStr) {
+                const parts = request.timeStr.replace('[', '').replace(']', '').split(':').map(Number);
+                if (parts.length === 2) secs = parts[0] * 60 + parts[1];
+                else if (parts.length === 3) secs = parts[0] * 3600 + parts[1] * 60 + parts[2];
+            }
+            if (secs !== undefined) {
+                video.currentTime = secs;
+                video.play();
+                sendResponse({ success: true, currentTime: video.currentTime });
+            } else {
+                sendResponse({ success: false, error: "Invalid seconds" });
+            }
+        } else {
+            sendResponse({ success: false, error: "No video found" });
+        }
+        return true;
     }
 
     if (request.action === "captureVideoFrame") {

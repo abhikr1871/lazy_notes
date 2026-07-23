@@ -113,18 +113,35 @@ function SmartEditor({ storageKey = 'lazyyNotesContent', onBack, placeholder, si
             }
         }
     };
+    const handleEditorCanvasClick = (e) => {
+        const badge = e.target.closest('.yt-timestamp-badge') || (e.target.innerText && e.target.innerText.trim().startsWith('[') && e.target.innerText.trim().endsWith(']') ? e.target : null);
+        if (badge) {
+            e.stopPropagation();
+            const secs = badge.getAttribute('data-seconds');
+            const timeText = badge.innerText.trim();
+            if (typeof chrome !== 'undefined' && chrome.tabs) {
+                chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+                    if (tabs[0]) {
+                        chrome.tabs.sendMessage(tabs[0].id, {
+                            action: "seekVideoTime",
+                            seconds: secs ? parseInt(secs) : undefined,
+                            timeStr: timeText
+                        });
+                    }
+                });
+            }
+            return;
+        }
+        handleContainerClick(e);
+    };
+
     const handleContainerClick = (e) => {
-        // If clicking the container background (not the content itself)
-        // We check if the click target is the container div
         if (e.target === e.currentTarget || e.target.id === 'editor-wrapper') {
-            e.stopPropagation(); // Prevent bubbling causing double focus
+            e.stopPropagation();
             if (editorRef.current) {
                 const lastElement = editorRef.current.lastElementChild;
-                // If the user deleted the trailing newline after an image, we add it back
-                // We check for IMG tag specifically
                 if (lastElement && lastElement.tagName === 'IMG') {
                     setHtml(prev => prev + "<p><br/></p>");
-                    // Wait for state update and render
                     setTimeout(moveCursorToEnd, 0);
                 } else {
                     moveCursorToEnd();
@@ -227,16 +244,19 @@ function SmartEditor({ storageKey = 'lazyyNotesContent', onBack, placeholder, si
     };
 
     const handleTimestamp = () => {
-        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-            if (tabs[0]) {
-                chrome.tabs.sendMessage(tabs[0].id, { action: "getVideoTime" }, (response) => {
-                    if (response && response.time) {
-                        const timeStr = `<span style="color: #6366f1; font-weight: bold; background: #e0e7ff; padding: 2px 6px; border-radius: 4px;">[${response.time}]</span>&nbsp;`;
-                        setHtml(prev => prev + timeStr);
-                    }
-                });
-            }
-        });
+        if (typeof chrome !== 'undefined' && chrome.tabs) {
+            chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+                if (tabs[0]) {
+                    chrome.tabs.sendMessage(tabs[0].id, { action: "getVideoTime" }, (response) => {
+                        if (response && response.time) {
+                            const secs = response.seconds !== undefined ? response.seconds : 0;
+                            const timeStr = `<span class="yt-timestamp-badge" data-seconds="${secs}" style="color: #4f46e5; font-weight: bold; background: #e0e7ff; padding: 2px 8px; border-radius: 6px; cursor: pointer; text-decoration: underline;">[${response.time}]</span>&nbsp;`;
+                            setHtml(prev => prev + timeStr);
+                        }
+                    });
+                }
+            });
+        }
     };
 
     const handleSummarizeNotes = async () => {
@@ -461,10 +481,10 @@ function SmartEditor({ storageKey = 'lazyyNotesContent', onBack, placeholder, si
             </div>
 
             {/* Editor Canvas - Removed borders and padding as requested */}
-            <div className="flex-1 overflow-y-auto" id="pdf-container" onClick={handleContainerClick}>
+            <div className="flex-1 overflow-y-auto" id="pdf-container" onClick={handleEditorCanvasClick}>
                 <div
                     id="editor-wrapper"
-                    onClick={handleContainerClick}
+                    onClick={handleEditorCanvasClick}
                     className="min-h-full bg-white p-4 md:p-6 cursor-text max-w-none mx-auto transition-all duration-200 outline-none"
                     style={{ border: 'none', boxShadow: 'none' }}
                 >
