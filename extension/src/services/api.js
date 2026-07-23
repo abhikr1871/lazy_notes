@@ -17,9 +17,14 @@ const getHeaders = async (isMultipart = false) => {
 };
 
 const handleResponse = async (response) => {
-    const data = await response.json();
+    let data;
+    try {
+        data = await response.json();
+    } catch (e) {
+        throw new Error(`Server status ${response.status}: Request failed`);
+    }
     if (!response.ok) {
-        throw new Error(data.detail || 'API request failed');
+        throw new Error(data.detail || data.message || 'API request failed');
     }
     return data;
 };
