@@ -80,30 +80,28 @@ function SmartEditor({ storageKey = 'lazyyNotesContent', onBack, placeholder, si
 
 
     const handleSave = async () => {
-        if (!isAuthenticated) { // Fixed: using isAuthenticated state instead of undefined isLoggedIn
-            // prompt login?
-            alert("Please login to save notes to cloud.");
-            return;
+        setStatus("Saving...");
+        try {
+            localStorage.setItem(storageKey, html);
+            if (typeof chrome !== 'undefined' && chrome.storage) {
+                chrome.storage.local.set({ [storageKey]: html });
+            }
+        } catch (e) {
+            console.error("Local storage save failed:", e);
         }
 
-        setStatus("Saving...");
         try {
             if (onSave) {
                 await onSave(html);
-            } else {
+            } else if (isAuthenticated) {
                 await api.notes.save(storageKey, html);
             }
-
-            // Also save to local
-            localStorage.setItem(storageKey, html);
-            chrome.storage.local.set({ [storageKey]: html });
-
             setStatus("Saved!");
-            setTimeout(() => setStatus(""), 1000);
+            setTimeout(() => setStatus(""), 1500);
         } catch (error) {
-            console.error('Save failed:', error);
-            setStatus("Error");
-            alert('Failed to save to cloud');
+            console.warn('Cloud save fallback:', error);
+            setStatus("Saved locally");
+            setTimeout(() => setStatus(""), 1500);
         }
     };
     const handleContainerClick = (e) => {

@@ -65,24 +65,8 @@ async def get_tree(current_user = Depends(get_current_user)):
     return {"topics": [], "data": {}}
 
 @app.post("/leetcode/save")
-async def save_leetcode_note(note: LeetCodeNote, current_user = Depends(get_current_user)):
-    user_id = current_user["username"]
-    
-    # 1. Update Metadata in MongoDB
-    # We store the main structured data in Mongo
-    note_dict = note.dict(exclude={"content_url"}) # Start with all fields
-    
-    # 2. Upload Rich Content to S3 if present and large (or always if policy dictates)
-    # For this implementation, we'll assume note_content IS the rich text.
-    # If users want to offload heavy HTML/JSON to S3:
-    if len(note.note_content) > 100000: # Example threshold
-         # Upload to S3 logic (requires content to be file-like)
-         # For now, we'll keep it simple and store text in Mongo unless user explicitly sends content_url?
-         # Actually, the user asked to use S3 for images/notes. 
-         # Let's assume images are uploaded via /upload/image and URLs are stored in note_content.
-         pass
-
-    # Upsert into MongoDB
+async def save_leetcode_note(note: LeetCodeNote, current_user = Depends(get_optional_user)):
+    user_id = current_user["username"] if current_user else "anonymous"
     leetcode_collection.update_one(
         {"user_id": user_id, "problem_slug": note.problem_slug},
         {"$set": {
@@ -92,16 +76,15 @@ async def save_leetcode_note(note: LeetCodeNote, current_user = Depends(get_curr
             "code_snippet": note.code_snippet,
             "language": note.language,
             "images": note.images,
-            "updated_at": uuid.uuid4().hex # rudimentary timestamp/version
+            "updated_at": uuid.uuid4().hex
         }},
         upsert=True
     )
     return {"status": "saved", "slug": note.problem_slug}
 
 @app.post("/leetcode/tree")
-async def sync_leetcode_tree(tree: TreeSync, current_user = Depends(get_current_user)):
-    user_id = current_user["username"]
-    # Store tree structure in the same collection but with a special flag/ID
+async def sync_leetcode_tree(tree: TreeSync, current_user = Depends(get_optional_user)):
+    user_id = current_user["username"] if current_user else "anonymous"
     leetcode_collection.update_one(
         {"user_id": user_id, "type": "tree"}, 
         {"$set": {
@@ -114,35 +97,33 @@ async def sync_leetcode_tree(tree: TreeSync, current_user = Depends(get_current_
     return {"status": "saved"}
 
 @app.get("/leetcode/tree")
-async def get_leetcode_tree(current_user = Depends(get_current_user)):
-    user_id = current_user["username"]
+async def get_leetcode_tree(current_user = Depends(get_optional_user)):
+    user_id = current_user["username"] if current_user else "anonymous"
     doc = leetcode_collection.find_one({"user_id": user_id, "type": "tree"})
     if doc:
         return {"topics": doc.get("topics", []), "data": doc.get("data", {})}
     return {"topics": [], "data": {}}
 
 @app.get("/leetcode/all")
-async def get_all_leetcode_notes(current_user = Depends(get_current_user)):
-    user_id = current_user["username"]
+async def get_all_leetcode_notes(current_user = Depends(get_optional_user)):
+    user_id = current_user["username"] if current_user else "anonymous"
     cursor = leetcode_collection.find({"user_id": user_id}, {"_id": 0, "title": 1, "problem_slug": 1, "subtopics": 1})
     notes = list(cursor)
     return {"notes": notes}
 
 @app.get("/leetcode/{problem_slug}")
-async def get_leetcode_note(problem_slug: str, current_user = Depends(get_current_user)):
-    user_id = current_user["username"]
+async def get_leetcode_note(problem_slug: str, current_user = Depends(get_optional_user)):
+    user_id = current_user["username"] if current_user else "anonymous"
     doc = leetcode_collection.find_one({"user_id": user_id, "problem_slug": problem_slug})
-    
     if doc:
         doc.pop("_id", None)
         return doc
-    
     return {"found": False}
 
 # --- YouTube Endpoints ---
 @app.post("/youtube/save")
-async def save_youtube_note(note: YoutubeNote, current_user = Depends(get_current_user)):
-    user_id = current_user["username"]
+async def save_youtube_note(note: YoutubeNote, current_user = Depends(get_optional_user)):
+    user_id = current_user["username"] if current_user else "anonymous"
     youtube_collection.update_one(
         {"user_id": user_id, "video_id": note.video_id},
         {"$set": {
@@ -157,8 +138,8 @@ async def save_youtube_note(note: YoutubeNote, current_user = Depends(get_curren
     return {"status": "saved", "id": note.video_id}
 
 @app.get("/youtube/{video_id}")
-async def get_youtube_note(video_id: str, current_user = Depends(get_current_user)):
-    user_id = current_user["username"]
+async def get_youtube_note(video_id: str, current_user = Depends(get_optional_user)):
+    user_id = current_user["username"] if current_user else "anonymous"
     doc = youtube_collection.find_one({"user_id": user_id, "video_id": video_id})
     if doc:
         doc.pop("_id", None)
@@ -167,8 +148,8 @@ async def get_youtube_note(video_id: str, current_user = Depends(get_current_use
 
 # --- Codeforces Endpoints ---
 @app.post("/codeforces/save")
-async def save_codeforces_note(note: CodeforcesNote, current_user = Depends(get_current_user)):
-    user_id = current_user["username"]
+async def save_codeforces_note(note: CodeforcesNote, current_user = Depends(get_optional_user)):
+    user_id = current_user["username"] if current_user else "anonymous"
     codeforces_collection.update_one(
         {"user_id": user_id, "problem_id": note.problem_id},
         {"$set": {
@@ -185,9 +166,8 @@ async def save_codeforces_note(note: CodeforcesNote, current_user = Depends(get_
     return {"status": "saved", "id": note.problem_id}
 
 @app.post("/codeforces/tree")
-async def sync_codeforces_tree(tree: TreeSync, current_user = Depends(get_current_user)):
-    user_id = current_user["username"]
-    # Store tree structure in the same collection but with a special flag/ID
+async def sync_codeforces_tree(tree: TreeSync, current_user = Depends(get_optional_user)):
+    user_id = current_user["username"] if current_user else "anonymous"
     codeforces_collection.update_one(
         {"user_id": user_id, "type": "tree"}, 
         {"$set": {
