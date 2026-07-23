@@ -548,8 +548,42 @@ function LeetCodeManager({ initialTab }) {
 
         const handleExport = async (format) => {
             try {
-                const res = await api.leetcode.getAll();
-                const questions = res && res.notes ? res.notes : [];
+                let questions = [];
+
+                if (currentTopic && currentTopic.subtopics) {
+                    Object.values(currentTopic.subtopics).forEach(subObj => {
+                        if (subObj && subObj.sections) {
+                            Object.values(subObj.sections).forEach(qList => {
+                                if (Array.isArray(qList)) {
+                                    qList.forEach(q => {
+                                        const qId = q.id || q.title;
+                                        const noteKey = `leetcode_note_${qId}`;
+                                        const codeKey = `leetcode_code_${qId}`;
+                                        const noteContent = localStorage.getItem(noteKey) || q.notes || "";
+                                        const codeSnippet = localStorage.getItem(codeKey) || q.code || "";
+                                        questions.push({
+                                            title: q.title || qId,
+                                            difficulty: q.difficulty || "Medium",
+                                            url: q.url || "",
+                                            notes: noteContent,
+                                            code: codeSnippet
+                                        });
+                                    });
+                                }
+                            });
+                        }
+                    });
+                }
+
+                if (questions.length === 0) {
+                    try {
+                        const res = await api.leetcode.getAll();
+                        if (res && res.notes) {
+                            questions = res.notes;
+                        }
+                    } catch (e) {}
+                }
+
                 if (format === 'pdf') {
                     exportTopicToPDF(activeTopic, questions);
                 } else {
