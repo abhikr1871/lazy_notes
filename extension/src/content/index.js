@@ -704,30 +704,35 @@ function injectGFGButton() {
 
     if (document.getElementById("lazyy-gfg-ai-btn")) return;
 
-    const headerSelectors = [
-        '.problems_header_content__title',
-        'h3',
-        '.header-title'
-    ];
+    const btnContainer = document.createElement("div");
+    btnContainer.id = "lazyy-gfg-ai-btn";
+    btnContainer.style.cssText = "position: fixed; bottom: 24px; right: 24px; z-index: 999999; display: flex; flex-direction: row; gap: 8px;";
 
-    let targetEl = null;
-    for (const sel of headerSelectors) {
-        const el = document.querySelector(sel);
-        if (el) {
-            targetEl = el.parentElement || el;
-            break;
-        }
-    }
+    const aiBtn = document.createElement("button");
+    aiBtn.innerHTML = "✨ AI Explainer";
+    aiBtn.style.cssText = "padding: 8px 16px; background: linear-gradient(135deg, #4f46e5, #7c3aed); color: white; border: none; border-radius: 20px; font-weight: bold; font-size: 12px; cursor: pointer; box-shadow: 0 4px 14px rgba(79, 70, 229, 0.4); font-family: system-ui, -apple-system, sans-serif; transition: all 0.2s ease;";
+    aiBtn.onmouseover = () => aiBtn.style.transform = "scale(1.05)";
+    aiBtn.onmouseout = () => aiBtn.style.transform = "scale(1)";
+    aiBtn.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleGFGSidebar('ai');
+    };
 
-    if (!targetEl) targetEl = document.body;
+    const notesBtn = document.createElement("button");
+    notesBtn.innerHTML = "📝 Notes";
+    notesBtn.style.cssText = "padding: 8px 16px; background: #0f172a; color: white; border: 1px solid #334155; border-radius: 20px; font-weight: bold; font-size: 12px; cursor: pointer; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3); font-family: system-ui, -apple-system, sans-serif; transition: all 0.2s ease;";
+    notesBtn.onmouseover = () => notesBtn.style.transform = "scale(1.05)";
+    notesBtn.onmouseout = () => notesBtn.style.transform = "scale(1)";
+    notesBtn.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleGFGSidebar('code');
+    };
 
-    const btn = document.createElement("button");
-    btn.id = "lazyy-gfg-ai-btn";
-    btn.innerHTML = "✨ AI Explainer";
-    btn.style.cssText = "margin-left: 10px; padding: 6px 12px; background: linear-gradient(135deg, #6366f1, #a855f7); color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 12px; z-index: 9999;";
-    btn.onclick = () => toggleGFGSidebar('ai');
-
-    targetEl.appendChild(btn);
+    btnContainer.appendChild(aiBtn);
+    btnContainer.appendChild(notesBtn);
+    document.body.appendChild(btnContainer);
 }
 
 function toggleGFGSidebar(tab) {
