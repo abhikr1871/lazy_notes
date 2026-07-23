@@ -696,6 +696,76 @@ function injectCodeforcesAIButton() {
     }
 }
 
+const IS_GFG = window.location.hostname.includes("geeksforgeeks.org");
+
+function injectGFGButton() {
+    const path = window.location.pathname;
+    if (!path.includes("/problems/")) return;
+
+    if (document.getElementById("lazyy-gfg-ai-btn")) return;
+
+    const headerSelectors = [
+        '.problems_header_content__title',
+        'h3',
+        '.header-title'
+    ];
+
+    let targetEl = null;
+    for (const sel of headerSelectors) {
+        const el = document.querySelector(sel);
+        if (el) {
+            targetEl = el.parentElement || el;
+            break;
+        }
+    }
+
+    if (!targetEl) targetEl = document.body;
+
+    const btn = document.createElement("button");
+    btn.id = "lazyy-gfg-ai-btn";
+    btn.innerHTML = "✨ AI Explainer";
+    btn.style.cssText = "margin-left: 10px; padding: 6px 12px; background: linear-gradient(135deg, #6366f1, #a855f7); color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 12px; z-index: 9999;";
+    btn.onclick = () => toggleGFGSidebar('ai');
+
+    targetEl.appendChild(btn);
+}
+
+function toggleGFGSidebar(tab) {
+    let container = document.getElementById("lazyy-gfg-container");
+    if (container) {
+        container.classList.toggle("lazyy-visible");
+    } else {
+        container = document.createElement("div");
+        container.id = "lazyy-gfg-container";
+        container.style.cssText = `
+            position: fixed; top: 0; right: -420px; width: 420px; height: 100vh;
+            z-index: 999999; transition: right 0.3s ease; box-shadow: -5px 0 25px rgba(0,0,0,0.15);
+        `;
+
+        const iframe = document.createElement("iframe");
+        const iframeSrc = tab
+            ? chrome.runtime.getURL('sidepanel.html?context=gfg&tab=' + tab)
+            : chrome.runtime.getURL('sidepanel.html?context=gfg');
+        iframe.src = iframeSrc;
+        iframe.style.cssText = "width: 100%; height: 100%; border: none;";
+
+        const closeBtn = document.createElement("button");
+        closeBtn.innerHTML = "✕";
+        closeBtn.style.cssText = "position: absolute; left: -30px; top: 20px; width: 30px; height: 30px; background: white; border: 1px solid #eee; border-radius: 5px 0 0 5px; cursor: pointer; font-weight: bold; color: #666;";
+        closeBtn.onclick = () => container.classList.remove("lazyy-visible");
+
+        container.appendChild(closeBtn);
+        container.appendChild(iframe);
+        document.body.appendChild(container);
+
+        const style = document.createElement("style");
+        style.textContent = "#lazyy-gfg-container.lazyy-visible { right: 0 !important; }";
+        document.head.appendChild(style);
+
+        setTimeout(() => container.classList.add("lazyy-visible"), 10);
+    }
+}
+
 // --- Initialization ---
 const observer = new MutationObserver(() => {
     if (IS_YOUTUBE && window.location.href.includes("youtube.com/watch")) {
@@ -709,28 +779,19 @@ const observer = new MutationObserver(() => {
         injectCodeforcesCompileButton();
         injectCodeforcesAIButton();
     }
+    if (IS_GFG && window.location.href.includes("/problems/")) {
+        injectGFGButton();
+    }
 });
 
 observer.observe(document.body, { childList: true, subtree: true });
 
-// DEBUG: Confirm script execution
-if (IS_CODEFORCES) {
-    console.log("Lazzy: Codeforces detected. Initializing...");
-    // document.body.style.border = "5px solid red"; // Temporary visual debug
-}
-
-// Robust polling for Codeforces to ensure button injection
-if (IS_CODEFORCES) {
-    const cfInterval = setInterval(() => {
-        if (window.location.href.includes("/problem/") || window.location.href.includes("/problemset/")) {
-            injectCodeforcesButton();
-            injectCodeforcesCompileButton();
-            injectCodeforcesAIButton();
+if (IS_GFG) {
+    setInterval(() => {
+        if (window.location.href.includes("/problems/")) {
+            injectGFGButton();
         }
-    }, 1000); // Check every second
-
-    // Stop polling after 30 seconds to save resources
-    setTimeout(() => clearInterval(cfInterval), 30000);
+    }, 1000);
 }
 
 function getLeetCodeCode() {
@@ -886,6 +947,22 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             rating: rating,
             tags: tags,
             code: getCodeforcesCode()
+        });
+        return true;
+    }
+
+    if (request.action === "getGFGProblemDetails") {
+        let title = "Unknown Problem";
+        const titleEl = document.querySelector('h3') || document.querySelector('.header-title') || document.querySelector('h1');
+        if (titleEl && titleEl.innerText) {
+            title = titleEl.innerText.trim();
+        }
+
+        sendResponse({
+            title: title,
+            difficulty: "Medium",
+            url: window.location.href,
+            code: getGFGCode()
         });
         return true;
     }

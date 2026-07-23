@@ -5,8 +5,8 @@ from services.ai_service import AIService
 from auth import get_password_hash, verify_password, create_access_token, get_current_user, get_optional_user, ACCESS_TOKEN_EXPIRE_MINUTES
 from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File
 from datetime import datetime, timedelta, timezone
-from database import users_collection, trees_collection, notes_collection, leetcode_collection, youtube_collection, codeforces_collection
-from models import UserCreate, UserLogin, Token, TreeSync, NoteSync, LeetCodeNote, YoutubeNote, CodeforcesNote, CompileRequest
+from database import users_collection, trees_collection, notes_collection, leetcode_collection, youtube_collection, codeforces_collection, gfg_collection
+from models import UserCreate, UserLogin, Token, TreeSync, NoteSync, LeetCodeNote, YoutubeNote, CodeforcesNote, CompileRequest, GFGNote
 from services.s3_service import S3Service
 import uuid
 import httpx
@@ -191,6 +191,56 @@ async def get_codeforces_tree(current_user = Depends(get_current_user)):
 async def get_codeforces_note(problem_id: str, current_user = Depends(get_current_user)):
     user_id = current_user["username"]
     doc = codeforces_collection.find_one({"user_id": user_id, "problem_id": problem_id})
+    if doc:
+        doc.pop("_id", None)
+        return doc
+    return {"found": False}
+
+# --- GFG Endpoints ---
+@app.post("/gfg/save")
+async def save_gfg_note(note: GFGNote, current_user = Depends(get_current_user)):
+    user_id = current_user["username"]
+    gfg_collection.update_one(
+        {"user_id": user_id, "problem_slug": note.problem_slug},
+        {"$set": {
+            "title": note.title,
+            "subtopics": note.subtopics,
+            "note_content": note.note_content,
+            "code_snippet": note.code_snippet,
+            "language": note.language,
+            "images": note.images,
+            "updated_at": uuid.uuid4().hex
+        }},
+        upsert=True
+    )
+    return {"status": "saved", "slug": note.problem_slug}
+
+@app.post("/gfg/tree")
+async def sync_gfg_tree(tree: TreeSync, current_user = Depends(get_current_user)):
+    user_id = current_user["username"]
+    gfg_collection.update_one(
+        {"user_id": user_id, "type": "tree"}, 
+        {"$set": {
+            "topics": tree.topics,
+            "data": tree.data,
+            "updated_at": uuid.uuid4().hex
+        }},
+        upsert=True
+    )
+    return {"status": "saved"}
+
+@app.get("/gfg/tree")
+async def get_gfg_tree(current_user = Depends(get_optional_user)):
+    user_id = current_user["username"] if current_user else "anonymous"
+    doc = gfg_collection.find_one({"user_id": user_id, "type": "tree"})
+    if doc:
+        return {"topics": doc.get("topics", []), "data": doc.get("data", {})}
+    return {"topics": [], "data": {}}
+
+@app.get("/gfg/{problem_slug}")
+async def get_gfg_note(problem_slug: str, current_user = Depends(get_optional_user)):
+    user_id = current_user["username"] if current_user else "anonymous"
+    doc = gfg_collection.find_one({"user_id": user_id, "problem_slug": problem_slug})
     if doc:
         doc.pop("_id", None)
         return doc

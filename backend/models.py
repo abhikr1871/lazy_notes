@@ -60,3 +60,12 @@ class CompileRequest(BaseModel):
     code: str
     language: str
     stdin: Optional[str] = ""
+
+class GFGNote(BaseModel):
+    problem_slug: str
+    title: Optional[str] = ""
+    subtopics: list = []
+    note_content: Optional[str] = ""
+    code_snippet: Optional[str] = ""
+    language: Optional[str] = "python"
+    images: list = []

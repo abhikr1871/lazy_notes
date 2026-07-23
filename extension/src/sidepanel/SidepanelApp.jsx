@@ -5,6 +5,7 @@ import Login from '../features/auth/Login';
 import Signup from '../features/auth/Signup';
 import LeetCodeManager from '../features/leetcode/LeetCodeManager';
 import CodeforcesManager from '../features/codeforces/CodeforcesManager';
+import GFGManager from '../features/gfg/GFGManager';
 
 function App() {
     const [context, setContext] = useState(null);
@@ -33,6 +34,18 @@ function App() {
             <Router>
                 <Routes>
                     <Route path="/" element={<CodeforcesManager initialTab={tab} />} />
+                    <Route path="/login" element={<Login />} />
+                    <Route path="/signup" element={<Signup />} />
+                </Routes>
+            </Router>
+        );
+    }
+
+    if (context === 'gfg') {
+        return (
+            <Router>
+                <Routes>
+                    <Route path="/" element={<GFGManager initialTab={tab} />} />
                     <Route path="/login" element={<Login />} />
                     <Route path="/signup" element={<Signup />} />
                 </Routes>

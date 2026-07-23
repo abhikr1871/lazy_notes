@@ -266,5 +266,37 @@ export const api = {
             });
             return handleResponse(response);
         }
+    },
+
+    // GeeksforGeeks Notes
+    gfg: {
+        save: async (noteData) => {
+            const response = await fetch(`${BASE_URL}/gfg/save`, {
+                method: 'POST',
+                headers: await getHeaders(),
+                body: JSON.stringify(noteData)
+            });
+            return handleResponse(response);
+        },
+        get: async (slug) => {
+            const response = await fetch(`${BASE_URL}/gfg/${slug}`, {
+                headers: await getHeaders()
+            });
+            return handleResponse(response);
+        },
+        syncTree: async (treeData) => {
+            const response = await fetch(`${BASE_URL}/gfg/tree`, {
+                method: 'POST',
+                headers: await getHeaders(),
+                body: JSON.stringify(treeData)
+            });
+            return handleResponse(response);
+        },
+        getTree: async () => {
+            const response = await fetch(`${BASE_URL}/gfg/tree`, {
+                headers: await getHeaders()
+            });
+            return handleResponse(response);
+        }
     }
 };
