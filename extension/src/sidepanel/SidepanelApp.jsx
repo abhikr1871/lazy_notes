@@ -19,6 +19,42 @@ function App() {
         setTab(params.get('tab'));
     }, []);
 
+    if (context === 'leetcode') {
+        return (
+            <Router>
+                <Routes>
+                    <Route path="/" element={<LeetCodeManager initialTab={tab} />} />
+                    <Route path="/login" element={<Login />} />
+                    <Route path="/signup" element={<Signup />} />
+                </Routes>
+            </Router>
+        );
+    }
+
+    if (context === 'codeforces') {
+        return (
+            <Router>
+                <Routes>
+                    <Route path="/" element={<CodeforcesManager initialTab={tab} />} />
+                    <Route path="/login" element={<Login />} />
+                    <Route path="/signup" element={<Signup />} />
+                </Routes>
+            </Router>
+        );
+    }
+
+    if (context === 'gfg') {
+        return (
+            <Router>
+                <Routes>
+                    <Route path="/" element={<GFGManager initialTab={tab} />} />
+                    <Route path="/login" element={<Login />} />
+                    <Route path="/signup" element={<Signup />} />
+                </Routes>
+            </Router>
+        );
+    }
+
     return (
         <Router>
             <Routes>
