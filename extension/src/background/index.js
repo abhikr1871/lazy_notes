@@ -1,37 +1,55 @@
 // Background Service Worker
-console.log("IntelliAsk AI Background Service Worker Loaded");
+console.log("Lazzy Notes Background Service Worker Loaded");
 
 // Ensure Side Panel opens when the extension icon is clicked
-chrome.sidePanel
-    .setPanelBehavior({ openPanelOnActionClick: true })
-    .catch((error) => console.error(error));
+try {
+    if (chrome.sidePanel && typeof chrome.sidePanel.setPanelBehavior === 'function') {
+        chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch((err) => {
+            console.log("SidePanel behavior set error:", err);
+        });
+    }
+} catch (e) {
+    console.log("SidePanel API not available:", e);
+}
 
 chrome.runtime.onMessage.addListener((message, sender) => {
-    if (message.action === 'openSidePanel' && sender.tab) {
-        chrome.sidePanel.open({ tabId: sender.tab.id });
+    if (message.action === 'openSidePanel' && sender && sender.tab) {
+        try {
+            chrome.sidePanel.open({ tabId: sender.tab.id });
+        } catch (e) {
+            console.log("Could not open sidePanel:", e);
+        }
     }
 });
 
 chrome.runtime.onInstalled.addListener(() => {
-    console.log("IntelliAsk AI Installed");
+    console.log("Lazzy Notes Installed");
 
-    // Create Context Menus
-    chrome.contextMenus.create({
-        id: "explain-selection",
-        title: "Explain \"%s\"",
-        contexts: ["selection"]
-    });
+    try {
+        chrome.contextMenus.removeAll(() => {
+            chrome.contextMenus.create({
+                id: "explain-selection",
+                title: "Explain \"%s\"",
+                contexts: ["selection"]
+            });
 
-    chrome.contextMenus.create({
-        id: "summarize-page",
-        title: "Summarize Page",
-        contexts: ["page"]
-    });
+            chrome.contextMenus.create({
+                id: "summarize-page",
+                title: "Summarize Page with Lazzy",
+                contexts: ["page"]
+            });
+        });
+    } catch (e) {
+        console.log("ContextMenus creation error:", e);
+    }
 });
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
-    if (info.menuItemId === "explain-selection") {
-        console.log("Explain Selection:", info.selectionText);
-        // TODO: Send to popup or open popup with query
+    try {
+        if (info.menuItemId === "explain-selection" && tab && tab.id) {
+            chrome.sidePanel.open({ tabId: tab.id });
+        }
+    } catch (e) {
+        console.log("Context menu click handler error:", e);
     }
 });
