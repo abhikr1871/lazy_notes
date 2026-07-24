@@ -7,6 +7,8 @@ import LeetCodeManager from '../features/leetcode/LeetCodeManager';
 import CodeforcesManager from '../features/codeforces/CodeforcesManager';
 import GFGManager from '../features/gfg/GFGManager';
 
+import UniversalManager from '../features/universal/UniversalManager';
+
 function App() {
     const [context, setContext] = useState(null);
     const [tab, setTab] = useState(null);
@@ -17,46 +19,10 @@ function App() {
         setTab(params.get('tab'));
     }, []);
 
-    if (context === 'leetcode') {
-        return (
-            <Router>
-                <Routes>
-                    <Route path="/" element={<LeetCodeManager initialTab={tab} />} />
-                    <Route path="/login" element={<Login />} />
-                    <Route path="/signup" element={<Signup />} />
-                </Routes>
-            </Router>
-        );
-    }
-
-    if (context === 'codeforces') {
-        return (
-            <Router>
-                <Routes>
-                    <Route path="/" element={<CodeforcesManager initialTab={tab} />} />
-                    <Route path="/login" element={<Login />} />
-                    <Route path="/signup" element={<Signup />} />
-                </Routes>
-            </Router>
-        );
-    }
-
-    if (context === 'gfg') {
-        return (
-            <Router>
-                <Routes>
-                    <Route path="/" element={<GFGManager initialTab={tab} />} />
-                    <Route path="/login" element={<Login />} />
-                    <Route path="/signup" element={<Signup />} />
-                </Routes>
-            </Router>
-        );
-    }
-
     return (
         <Router>
             <Routes>
-                <Route path="/" element={<YoutubeNotes />} />
+                <Route path="/" element={<UniversalManager initialTab={tab} />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/signup" element={<Signup />} />
             </Routes>

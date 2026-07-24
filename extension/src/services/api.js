@@ -298,5 +298,43 @@ export const api = {
             });
             return handleResponse(response);
         }
+    },
+
+    // Universal Notes API
+    notes: {
+        save: async (noteData) => {
+            const response = await fetch(`${BASE_URL}/notes/save`, {
+                method: 'POST',
+                headers: await getHeaders(),
+                body: JSON.stringify(noteData)
+            });
+            return handleResponse(response);
+        },
+        get: async (problemId) => {
+            const response = await fetch(`${BASE_URL}/notes/get/${problemId}`, {
+                headers: await getHeaders()
+            });
+            return handleResponse(response);
+        },
+        getAll: async (platform = 'all') => {
+            const response = await fetch(`${BASE_URL}/notes/all?platform=${platform}`, {
+                headers: await getHeaders()
+            });
+            return handleResponse(response);
+        },
+        syncTree: async (treeData) => {
+            const response = await fetch(`${BASE_URL}/notes/tree/save`, {
+                method: 'POST',
+                headers: await getHeaders(),
+                body: JSON.stringify(treeData)
+            });
+            return handleResponse(response);
+        },
+        getTree: async () => {
+            const response = await fetch(`${BASE_URL}/notes/tree/get`, {
+                headers: await getHeaders()
+            });
+            return handleResponse(response);
+        }
     }
 };

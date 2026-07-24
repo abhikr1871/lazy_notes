@@ -69,3 +69,15 @@ class GFGNote(BaseModel):
     code_snippet: Optional[str] = ""
     language: Optional[str] = "python"
     images: list = []
+
+class UniversalNote(BaseModel):
+    problem_id: str
+    platform: str = "LeetCode"
+    title: Optional[str] = ""
+    difficulty: Optional[str] = "Medium"
+    url: Optional[str] = ""
+    subtopics: list = []
+    note_content: Optional[str] = ""
+    code_snippet: Optional[str] = ""
+    language: Optional[str] = "python"
+    images: list = []

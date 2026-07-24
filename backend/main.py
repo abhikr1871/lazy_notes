@@ -6,7 +6,7 @@ from auth import get_password_hash, verify_password, create_access_token, get_cu
 from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File
 from datetime import datetime, timedelta, timezone
 from database import users_collection, trees_collection, notes_collection, leetcode_collection, youtube_collection, codeforces_collection, gfg_collection
-from models import UserCreate, UserLogin, Token, TreeSync, NoteSync, LeetCodeNote, YoutubeNote, CodeforcesNote, CompileRequest, GFGNote
+from models import UserCreate, UserLogin, Token, TreeSync, NoteSync, LeetCodeNote, YoutubeNote, CodeforcesNote, CompileRequest, GFGNote, UniversalNote
 from services.s3_service import S3Service
 import uuid
 import httpx
@@ -245,6 +245,82 @@ async def get_gfg_note(problem_slug: str, current_user = Depends(get_optional_us
         doc.pop("_id", None)
         return doc
     return {"found": False}
+
+# --- Universal Platform Notes Endpoints ---
+@app.post("/notes/save")
+async def save_universal_note(note: UniversalNote, current_user = Depends(get_current_user)):
+    user_id = current_user["username"]
+    notes_collection.update_one(
+        {"user_id": user_id, "problem_id": note.problem_id},
+        {"$set": {
+            "platform": note.platform,
+            "title": note.title,
+            "difficulty": note.difficulty,
+            "url": note.url,
+            "subtopics": note.subtopics,
+            "note_content": note.note_content,
+            "code_snippet": note.code_snippet,
+            "language": note.language,
+            "images": note.images,
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }},
+        upsert=True
+    )
+    return {"status": "saved", "id": note.problem_id}
+
+@app.get("/notes/all")
+async def get_all_notes(platform: Optional[str] = None, current_user = Depends(get_optional_user)):
+    user_id = current_user["username"] if current_user else "anonymous"
+    query = {"user_id": user_id, "type": {"$ne": "tree"}}
+    if platform and platform.lower() != 'all':
+        query["platform"] = platform
+
+    notes = list(notes_collection.find(query))
+
+    if not notes:
+        lc = list(leetcode_collection.find({"user_id": user_id, "type": {"$ne": "tree"}}))
+        cf = list(codeforces_collection.find({"user_id": user_id, "type": {"$ne": "tree"}}))
+        gfg = list(gfg_collection.find({"user_id": user_id, "type": {"$ne": "tree"}}))
+        notes = lc + cf + gfg
+
+    for n in notes:
+        n.pop("_id", None)
+    return {"notes": notes}
+
+@app.get("/notes/get/{problem_id}")
+async def get_note(problem_id: str, current_user = Depends(get_optional_user)):
+    user_id = current_user["username"] if current_user else "anonymous"
+    doc = notes_collection.find_one({"user_id": user_id, "problem_id": problem_id})
+    if not doc:
+        doc = leetcode_collection.find_one({"user_id": user_id, "problem_slug": problem_id}) or \
+              codeforces_collection.find_one({"user_id": user_id, "problem_id": problem_id}) or \
+              gfg_collection.find_one({"user_id": user_id, "problem_slug": problem_id})
+    if doc:
+        doc.pop("_id", None)
+        return doc
+    return {"found": False}
+
+@app.post("/notes/tree/save")
+async def sync_universal_tree(tree: TreeSync, current_user = Depends(get_current_user)):
+    user_id = current_user["username"]
+    trees_collection.update_one(
+        {"user_id": user_id, "type": "tree"},
+        {"$set": {
+            "topics": tree.topics,
+            "data": tree.data,
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }},
+        upsert=True
+    )
+    return {"status": "saved"}
+
+@app.get("/notes/tree/get")
+async def get_universal_tree(current_user = Depends(get_optional_user)):
+    user_id = current_user["username"] if current_user else "anonymous"
+    doc = trees_collection.find_one({"user_id": user_id, "type": "tree"})
+    if doc:
+        return {"topics": doc.get("topics", []), "data": doc.get("data", {})}
+    return {"topics": [], "data": {}}
 
 @app.post("/compile")
 async def compile_code(req: CompileRequest, current_user = Depends(get_current_user)):

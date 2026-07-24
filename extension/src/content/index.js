@@ -972,5 +972,55 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return true;
     }
 
+    if (request.action === "getUniversalProblemDetails") {
+        const url = window.location.href;
+        let platform = "Web Note";
+        let title = document.title || "Untitled Note";
+        let difficulty = "Medium";
+        let code = "";
+
+        if (url.includes("leetcode.com/problems")) {
+            platform = "LeetCode";
+            const titleEl = document.querySelector('div[data-cy="question-title"]') || document.querySelector('.text-title-large') || document.querySelector('h1');
+            if (titleEl && titleEl.innerText) title = titleEl.innerText.trim();
+            difficulty = getLeetCodeDifficulty();
+            code = getLeetCodeCode();
+        } else if (url.includes("codeforces.com")) {
+            platform = "Codeforces";
+            const titleEl = document.querySelector(".problem-statement .header .title");
+            if (titleEl && titleEl.innerText) title = titleEl.innerText.trim();
+            code = getCodeforcesCode();
+        } else if (url.includes("geeksforgeeks.org")) {
+            platform = "GeeksforGeeks";
+            const titleEl = document.querySelector('h3') || document.querySelector('.header-title') || document.querySelector('h1');
+            if (titleEl && titleEl.innerText) title = titleEl.innerText.trim();
+            code = getGFGCode();
+        } else if (url.includes("hackerrank.com")) {
+            platform = "HackerRank";
+            const titleEl = document.querySelector('h1') || document.querySelector('.page-label');
+            if (titleEl && titleEl.innerText) title = titleEl.innerText.trim();
+            const monacoLines = document.querySelectorAll('.monaco-editor .view-line');
+            if (monacoLines.length > 0) {
+                code = Array.from(monacoLines).map(l => l.innerText).join('\n');
+            }
+        } else if (url.includes("youtube.com/watch")) {
+            platform = "YouTube";
+            const titleEl = document.querySelector('h1.ytd-watch-metadata') || document.querySelector('title');
+            if (titleEl && titleEl.innerText) title = titleEl.innerText.replace("- YouTube", "").trim();
+        } else {
+            const sel = window.getSelection() ? window.getSelection().toString() : "";
+            if (sel) code = sel;
+        }
+
+        sendResponse({
+            platform: platform,
+            title: title,
+            difficulty: difficulty,
+            url: url,
+            code: code
+        });
+        return true;
+    }
+
     return true;
 });
