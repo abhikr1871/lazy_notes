@@ -71,9 +71,17 @@ export default function UniversalQuestionWorkspace({ question, onBack, initialTa
             setTimeout(() => setStatus(""), 2000);
         } catch (e) {
             console.error("Save failed:", e);
-            setStatus("Save error");
+            setStatus("Saved locally");
         }
     };
+
+    useEffect(() => {
+        if (!code) return;
+        const timer = setTimeout(() => {
+            handleSaveCode();
+        }, 1000);
+        return () => clearTimeout(timer);
+    }, [code]);
 
     const badgeClass = PLATFORM_THEMES[platform] || PLATFORM_THEMES.Default;
 
@@ -156,7 +164,13 @@ export default function UniversalQuestionWorkspace({ question, onBack, initialTa
                 )}
 
                 {activeTab === 'ai' && (
-                    <AIExplainerView question={question} platform={platform} />
+                    <AIExplainerView
+                        title={question.title}
+                        platform={platform}
+                        currentCode={code}
+                        language="cpp"
+                        noteKey={noteKey}
+                    />
                 )}
             </div>
         </div>

@@ -8,44 +8,87 @@ const IS_CODEFORCES = window.location.hostname.includes("codeforces.com");
 
 // --- YouTube Sidebar Logic ---
 function toggleYouTubeSidebar() {
-    const secondary = document.querySelector("ytd-watch-flexy #secondary");
-    if (!secondary) {
-        console.warn("Could not find YouTube sidebar (secondary column).");
-        return;
-    }
+    const secondary = document.querySelector("#secondary-inner") || document.querySelector("ytd-watch-flexy #secondary") || document.querySelector("#secondary");
 
     let iframe = document.getElementById("lazyy-sidebar-yt");
-    if (iframe) {
-        if (iframe.parentElement !== secondary) {
-            // Reattach to the active secondary container during SPA navigation
+    if (secondary) {
+        if (!iframe) {
+            iframe = document.createElement("iframe");
+            iframe.id = "lazyy-sidebar-yt";
+            iframe.src = chrome.runtime.getURL("sidepanel.html?context=youtube");
+            iframe.style.cssText = `
+                width: 100%; 
+                height: 600px; 
+                border: none; 
+                border-radius: 12px; 
+                margin-bottom: 16px; 
+                box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+                z-index: 999;
+                display: block;
+            `;
             secondary.insertBefore(iframe, secondary.firstChild);
-            iframe.style.display = "block";
+            return;
+        } else {
+            if (iframe.parentElement !== secondary) {
+                secondary.insertBefore(iframe, secondary.firstChild);
+            }
+            const isHidden = iframe.style.display === "none" || window.getComputedStyle(iframe).display === "none";
+            iframe.style.display = isHidden ? "block" : "none";
             return;
         }
+    }
 
-        const currentDisplay = iframe.style.display || window.getComputedStyle(iframe).display;
-        iframe.style.display = currentDisplay === "none" ? "block" : "none";
+    // ULTIMATE FALLBACK: Fixed Sliding Drawer Container (guaranteed to open even if YouTube re-renders secondary column)
+    let container = document.getElementById("lazyy-youtube-container");
+    if (container) {
+        container.classList.toggle("lazyy-visible");
     } else {
-        iframe = document.createElement("iframe");
-        iframe.id = "lazyy-sidebar-yt";
-        iframe.src = chrome.runtime.getURL("sidepanel.html");
-
-        iframe.style.cssText = `
-            width: 100%; 
-            height: 600px; 
-            border: none; 
-            border-radius: 12px; 
-            margin-bottom: 16px; 
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-            z-index: 999;
-            display: block;
+        container = document.createElement("div");
+        container.id = "lazyy-youtube-container";
+        container.style.cssText = `
+            position: fixed; top: 0; right: -420px; width: 420px; height: 100vh;
+            z-index: 999999; transition: right 0.3s ease; box-shadow: -5px 0 25px rgba(0,0,0,0.15);
         `;
-        secondary.insertBefore(iframe, secondary.firstChild);
+
+        const ytIframe = document.createElement("iframe");
+        ytIframe.src = chrome.runtime.getURL("sidepanel.html?context=youtube");
+        ytIframe.style.cssText = "width: 100%; height: 100%; border: none;";
+
+        const closeBtn = document.createElement("button");
+        closeBtn.innerHTML = "✕";
+        closeBtn.style.cssText = "position: absolute; left: -30px; top: 20px; width: 30px; height: 30px; background: white; border: 1px solid #eee; border-radius: 5px 0 0 5px; cursor: pointer; font-weight: bold; color: #666;";
+        closeBtn.onclick = () => container.classList.remove("lazyy-visible");
+
+        container.appendChild(closeBtn);
+        container.appendChild(ytIframe);
+        document.body.appendChild(container);
+
+        const style = document.createElement("style");
+        style.textContent = "#lazyy-youtube-container.lazyy-visible { right: 0 !important; }";
+        document.head.appendChild(style);
+
+        setTimeout(() => container.classList.add("lazyy-visible"), 10);
     }
 }
 
 function injectYouTubeButton() {
-    const target = document.querySelector("ytd-watch-metadata #owner");
+    const selectors = [
+        "ytd-watch-metadata #owner",
+        "ytd-watch-metadata #actions-inner",
+        "ytd-watch-metadata #top-row",
+        "#subscribe-button",
+        "#owner"
+    ];
+
+    let target = null;
+    for (const sel of selectors) {
+        const el = document.querySelector(sel);
+        if (el) {
+            target = el;
+            break;
+        }
+    }
+
     if (!target) return;
 
     let btn = document.getElementById("lazyy-notes-button");
@@ -66,6 +109,7 @@ function injectYouTubeButton() {
         font-weight: 600; cursor: pointer; font-size: 13px;
         box-shadow: 0 4px 6px -1px rgba(99, 102, 241, 0.3);
         transition: all 0.2s ease; display: inline-flex; align-items: center; gap: 6px;
+        position: relative; z-index: 9999;
     `;
 
     btn.onclick = (e) => {
@@ -704,13 +748,27 @@ function injectGFGButton() {
 
     if (document.getElementById("lazyy-gfg-ai-btn")) return;
 
-    const btnContainer = document.createElement("div");
-    btnContainer.id = "lazyy-gfg-ai-btn";
-    btnContainer.style.cssText = "position: fixed; bottom: 24px; right: 24px; z-index: 999999; display: flex; flex-direction: row; gap: 8px;";
+    const titleSelectors = [
+        '.problems_header_content__title',
+        'div[class*="problems_header_content__title"]',
+        '.problem-statement_header__',
+        'h3',
+        '.header-title'
+    ];
+
+    let targetEl = null;
+    for (const sel of titleSelectors) {
+        const el = document.querySelector(sel);
+        if (el) {
+            targetEl = el.parentElement || el;
+            break;
+        }
+    }
 
     const aiBtn = document.createElement("button");
-    aiBtn.innerHTML = "✨ AI Explainer";
-    aiBtn.style.cssText = "padding: 8px 16px; background: linear-gradient(135deg, #4f46e5, #7c3aed); color: white; border: none; border-radius: 20px; font-weight: bold; font-size: 12px; cursor: pointer; box-shadow: 0 4px 14px rgba(79, 70, 229, 0.4); font-family: system-ui, -apple-system, sans-serif; transition: all 0.2s ease;";
+    aiBtn.id = "lazyy-gfg-ai-btn";
+    aiBtn.innerHTML = "✨ AI";
+    aiBtn.style.cssText = "margin-left: 10px; padding: 4px 10px; background: linear-gradient(135deg, #4f46e5, #7c3aed); color: white; border: none; border-radius: 8px; font-weight: bold; font-size: 11px; cursor: pointer; box-shadow: 0 2px 6px rgba(79, 70, 229, 0.3); font-family: system-ui, -apple-system, sans-serif; transition: all 0.2s ease; vertical-align: middle;";
     aiBtn.onmouseover = () => aiBtn.style.transform = "scale(1.05)";
     aiBtn.onmouseout = () => aiBtn.style.transform = "scale(1)";
     aiBtn.onclick = (e) => {
@@ -720,8 +778,9 @@ function injectGFGButton() {
     };
 
     const notesBtn = document.createElement("button");
+    notesBtn.id = "lazyy-gfg-notes-btn";
     notesBtn.innerHTML = "📝 Notes";
-    notesBtn.style.cssText = "padding: 8px 16px; background: #0f172a; color: white; border: 1px solid #334155; border-radius: 20px; font-weight: bold; font-size: 12px; cursor: pointer; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3); font-family: system-ui, -apple-system, sans-serif; transition: all 0.2s ease;";
+    notesBtn.style.cssText = "margin-left: 6px; padding: 4px 10px; background: #0f172a; color: white; border: 1px solid #334155; border-radius: 8px; font-weight: bold; font-size: 11px; cursor: pointer; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2); font-family: system-ui, -apple-system, sans-serif; transition: all 0.2s ease; vertical-align: middle;";
     notesBtn.onmouseover = () => notesBtn.style.transform = "scale(1.05)";
     notesBtn.onmouseout = () => notesBtn.style.transform = "scale(1)";
     notesBtn.onclick = (e) => {
@@ -730,15 +789,27 @@ function injectGFGButton() {
         toggleGFGSidebar('code');
     };
 
-    btnContainer.appendChild(aiBtn);
-    btnContainer.appendChild(notesBtn);
-    document.body.appendChild(btnContainer);
+    if (targetEl) {
+        targetEl.appendChild(aiBtn);
+        targetEl.appendChild(notesBtn);
+    } else {
+        const btnContainer = document.createElement("div");
+        btnContainer.id = "lazyy-gfg-ai-btn-container";
+        btnContainer.style.cssText = "position: fixed; top: 65px; right: 20px; z-index: 999999; display: flex; flex-direction: row; gap: 8px;";
+        btnContainer.appendChild(aiBtn);
+        btnContainer.appendChild(notesBtn);
+        document.body.appendChild(btnContainer);
+    }
 }
 
 function toggleGFGSidebar(tab) {
     let container = document.getElementById("lazyy-gfg-container");
     if (container) {
-        container.classList.toggle("lazyy-visible");
+        const iframe = container.querySelector("iframe");
+        if (iframe && tab) {
+            iframe.src = chrome.runtime.getURL('sidepanel.html?context=gfg&tab=' + tab);
+        }
+        container.classList.add("lazyy-visible");
     } else {
         container = document.createElement("div");
         container.id = "lazyy-gfg-container";
@@ -771,6 +842,213 @@ function toggleGFGSidebar(tab) {
     }
 }
 
+function hasCodeEditorOnPage() {
+    return !!(
+        document.querySelector('.monaco-editor') ||
+        document.querySelector('.ace_editor') ||
+        document.querySelector('.CodeMirror') ||
+        document.querySelector('pre code') ||
+        document.querySelector('textarea.code') ||
+        document.querySelector('textarea[name*="code"]')
+    );
+}
+
+function shouldInjectUniversalStack() {
+    const host = window.location.hostname.toLowerCase();
+    
+    // Exclude search engine homepages & search portals where taking notes is not relevant
+    const excludedHosts = [
+        "google.com", "google.co.in", "bing.com", "duckduckgo.com",
+        "yahoo.com", "baidu.com", "yandex.com", "search.yahoo.com"
+    ];
+
+    if (excludedHosts.some(h => host.endsWith(h) || host === h)) return false;
+    if (window.location.protocol.startsWith("chrome") || window.location.protocol.startsWith("edge")) return false;
+
+    return true;
+}
+
+function injectUniversalFloatingStack() {
+    if (IS_LEETCODE || IS_CODEFORCES || IS_GFG || IS_YOUTUBE) return;
+    if (!shouldInjectUniversalStack()) return;
+    if (document.getElementById("lazyy-universal-floating-stack")) return;
+
+    const isCodingPage = hasCodeEditorOnPage();
+    const savedTop = localStorage.getItem("lazyy_stack_top") || "35%";
+
+    const stack = document.createElement("div");
+    stack.id = "lazyy-universal-floating-stack";
+    stack.style.cssText = `
+        position: fixed;
+        right: 14px;
+        top: ${savedTop};
+        z-index: 999999;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        background: rgba(15, 23, 42, 0.9);
+        backdrop-filter: blur(12px);
+        padding: 8px 6px;
+        border-radius: 28px;
+        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(99, 102, 241, 0.3);
+        transition: box-shadow 0.2s ease, transform 0.1s ease;
+        user-select: none;
+        touch-action: none;
+    `;
+
+    // 1. Drag Handle Header (Owl Logo)
+    const logoContainer = document.createElement("div");
+    logoContainer.title = "Drag Lazzy Widget | Click to open notes";
+    logoContainer.style.cssText = `
+        width: 38px; height: 38px; border-radius: 50%;
+        background: linear-gradient(135deg, #4f46e5, #7c3aed);
+        display: flex; align-items: center; justify-content: center;
+        cursor: grab; box-shadow: 0 4px 14px rgba(79, 70, 229, 0.5);
+        border: 2px solid rgba(255, 255, 255, 0.2); transition: all 0.2s ease;
+        position: relative;
+    `;
+
+    const logoImg = document.createElement("img");
+    logoImg.src = chrome.runtime.getURL("icons/icon48.png");
+    logoImg.style.cssText = "width: 24px; height: 24px; border-radius: 50%; pointer-events: none;";
+    logoContainer.appendChild(logoImg);
+
+    // Drag-and-Drop Implementation
+    let isDragging = false;
+    let startY = 0;
+    let startTop = 0;
+
+    const onMouseDown = (e) => {
+        isDragging = false;
+        startY = e.clientY || (e.touches && e.touches[0].clientY);
+        const rect = stack.getBoundingClientRect();
+        startTop = rect.top;
+
+        const onMouseMove = (moveEvent) => {
+            const currentY = moveEvent.clientY || (moveEvent.touches && moveEvent.touches[0].clientY);
+            const deltaY = currentY - startY;
+            if (Math.abs(deltaY) > 4) {
+                isDragging = true;
+                logoContainer.style.cursor = "grabbing";
+                let newTop = startTop + deltaY;
+                const maxTop = window.innerHeight - stack.offsetHeight - 10;
+                newTop = Math.max(10, Math.min(maxTop, newTop));
+                stack.style.top = `${newTop}px`;
+            }
+        };
+
+        const onMouseUp = () => {
+            window.removeEventListener('mousemove', onMouseMove);
+            window.removeEventListener('mouseup', onMouseUp);
+            window.removeEventListener('touchmove', onMouseMove);
+            window.removeEventListener('touchend', onMouseUp);
+            logoContainer.style.cursor = "grab";
+            if (isDragging) {
+                localStorage.setItem("lazyy_stack_top", stack.style.top);
+            }
+        };
+
+        window.addEventListener('mousemove', onMouseMove);
+        window.addEventListener('mouseup', onMouseUp);
+        window.addEventListener('touchmove', onMouseMove);
+        window.addEventListener('touchend', onMouseUp);
+    };
+
+    logoContainer.addEventListener('mousedown', onMouseDown);
+    logoContainer.addEventListener('touchstart', onMouseDown);
+
+    logoContainer.onclick = (e) => {
+        if (!isDragging) {
+            e.preventDefault();
+            e.stopPropagation();
+            toggleUniversalSidebar(isCodingPage ? 'code' : 'notes');
+        }
+    };
+
+    // 2. ✨ AI Explainer Button
+    const aiBtn = document.createElement("button");
+    aiBtn.innerHTML = "✨";
+    aiBtn.title = "Ask Lazzy AI Explainer";
+    aiBtn.style.cssText = `
+        width: 34px; height: 34px; border-radius: 50%;
+        background: linear-gradient(135deg, #6366f1, #a855f7);
+        color: white; border: none; font-size: 15px; cursor: pointer;
+        display: flex; items-center; justify-content: center;
+        box-shadow: 0 4px 10px rgba(99, 102, 241, 0.4); transition: transform 0.2s ease;
+    `;
+    aiBtn.onmouseover = () => aiBtn.style.transform = "scale(1.15)";
+    aiBtn.onmouseout = () => aiBtn.style.transform = "scale(1)";
+    aiBtn.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleUniversalSidebar('ai');
+    };
+
+    // 3. 📝 Smart Notes Button
+    const notesBtn = document.createElement("button");
+    notesBtn.innerHTML = "📝";
+    notesBtn.title = "Open Smart Notes";
+    notesBtn.style.cssText = `
+        width: 34px; height: 34px; border-radius: 50%;
+        background: #1e293b; color: white; border: 1px solid rgba(255, 255, 255, 0.2);
+        font-size: 14px; cursor: pointer; display: flex; items-center; justify-content: center;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3); transition: transform 0.2s ease;
+    `;
+    notesBtn.onmouseover = () => notesBtn.style.transform = "scale(1.15)";
+    notesBtn.onmouseout = () => notesBtn.style.transform = "scale(1)";
+    notesBtn.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleUniversalSidebar(isCodingPage ? 'code' : 'notes');
+    };
+
+    stack.appendChild(logoContainer);
+    stack.appendChild(aiBtn);
+    stack.appendChild(notesBtn);
+    document.body.appendChild(stack);
+}
+
+function toggleUniversalSidebar(tab) {
+    let container = document.getElementById("lazyy-universal-container");
+    if (container) {
+        const iframe = container.querySelector("iframe");
+        if (iframe && tab) {
+            iframe.src = chrome.runtime.getURL('sidepanel.html?context=universal&tab=' + tab);
+        }
+        container.classList.add("lazyy-visible");
+    } else {
+        container = document.createElement("div");
+        container.id = "lazyy-universal-container";
+        container.style.cssText = `
+            position: fixed; top: 0; right: -420px; width: 420px; height: 100vh;
+            z-index: 999999; transition: right 0.3s ease; box-shadow: -5px 0 25px rgba(0,0,0,0.15);
+        `;
+
+        const iframe = document.createElement("iframe");
+        const iframeSrc = tab
+            ? chrome.runtime.getURL('sidepanel.html?context=universal&tab=' + tab)
+            : chrome.runtime.getURL('sidepanel.html?context=universal');
+        iframe.src = iframeSrc;
+        iframe.style.cssText = "width: 100%; height: 100%; border: none;";
+
+        const closeBtn = document.createElement("button");
+        closeBtn.innerHTML = "✕";
+        closeBtn.style.cssText = "position: absolute; left: -30px; top: 20px; width: 30px; height: 30px; background: white; border: 1px solid #eee; border-radius: 5px 0 0 5px; cursor: pointer; font-weight: bold; color: #666;";
+        closeBtn.onclick = () => container.classList.remove("lazyy-visible");
+
+        container.appendChild(closeBtn);
+        container.appendChild(iframe);
+        document.body.appendChild(container);
+
+        const style = document.createElement("style");
+        style.textContent = "#lazyy-universal-container.lazyy-visible { right: 0 !important; }";
+        document.head.appendChild(style);
+
+        setTimeout(() => container.classList.add("lazyy-visible"), 10);
+    }
+}
+
 // --- Initialization ---
 const observer = new MutationObserver(() => {
     if (IS_YOUTUBE && window.location.href.includes("youtube.com/watch")) {
@@ -787,15 +1065,16 @@ const observer = new MutationObserver(() => {
     if (IS_GFG && window.location.href.includes("/problems/")) {
         injectGFGButton();
     }
+    if (!IS_LEETCODE && !IS_CODEFORCES && !IS_GFG) {
+        injectUniversalFloatingStack();
+    }
 });
 
 observer.observe(document.body, { childList: true, subtree: true });
 
-if (IS_GFG) {
+if (!IS_LEETCODE && !IS_CODEFORCES && !IS_GFG) {
     setInterval(() => {
-        if (window.location.href.includes("/problems/")) {
-            injectGFGButton();
-        }
+        injectUniversalFloatingStack();
     }, 1000);
 }
 
@@ -881,7 +1160,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
                 sendResponse({
                     success: true,
-                    imageData: canvas.toDataURL("image/jpeg"),
+                    imageData: canvas.toDataURL("image/jpeg", 0.8),
                     time: new Date(video.currentTime * 1000).toISOString().substring(14, 19)
                 });
             } catch (e) {

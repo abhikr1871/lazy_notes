@@ -16,6 +16,7 @@ function SmartEditor({ storageKey = 'lazyyNotesContent', onBack, placeholder, si
     const [isSummarizing, setIsSummarizing] = useState(false);
     const [isAnimating, setIsAnimating] = useState(false);
     const [isAuthenticated, setIsAuthenticated] = useState(false);
+    const [showLoginModal, setShowLoginModal] = useState(false);
     const editorRef = useRef(null);
     const navigate = useNavigate();
 
@@ -107,10 +108,7 @@ function SmartEditor({ storageKey = 'lazyyNotesContent', onBack, placeholder, si
         } catch (error) {
             console.error('Cloud save failed:', error);
             setStatus("Save failed");
-            const wantLogin = window.confirm("Your login session may have expired. Would you like to log in again now?");
-            if (wantLogin) {
-                navigate('/login');
-            }
+            setShowLoginModal(true);
         }
     };
     const handleEditorCanvasClick = (e) => {
@@ -195,7 +193,7 @@ function SmartEditor({ storageKey = 'lazyyNotesContent', onBack, placeholder, si
                 chrome.tabs.sendMessage(tabs[0].id, { action: "captureVideoFrame" }, async (response) => {
                     if (chrome.runtime.lastError || !response || !response.success) {
                         console.log("Video capture failed, fallback to tab.");
-                        const dataUrl = await chrome.tabs.captureVisibleTab(null, { format: "png" });
+                        const dataUrl = await chrome.tabs.captureVisibleTab(null, { format: "jpeg", quality: 80 });
                         const imgTag = `<br/><img src="${dataUrl}" style="max-width: 100%; border-radius: 8px; margin: 10px 0;" /><p><br/></p>`;
                         setHtml(prev => prev + imgTag);
                     } else {
@@ -504,6 +502,29 @@ function SmartEditor({ storageKey = 'lazyyNotesContent', onBack, placeholder, si
                     />
                 </div>
             </div>
+
+            {showLoginModal && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4">
+                    <div className="bg-white rounded-2xl p-5 max-w-xs w-full shadow-2xl border border-slate-200 text-center space-y-3">
+                        <h3 className="font-bold text-slate-800 text-sm">Login Session Expired</h3>
+                        <p className="text-xs text-slate-500">Your session may have expired. Would you like to log in now to sync notes to your cloud account?</p>
+                        <div className="flex gap-2 pt-2">
+                            <button
+                                onClick={() => setShowLoginModal(false)}
+                                className="flex-1 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={() => { setShowLoginModal(false); navigate('/login'); }}
+                                className="flex-1 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs shadow-sm"
+                            >
+                                Log In
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

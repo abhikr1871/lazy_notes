@@ -32,9 +32,16 @@ function fallbackAnchorDownload(dataUri, fileName) {
     setTimeout(() => document.body.removeChild(a), 100);
 }
 
-// 1. Export Topic Notes to Markdown (.md)
 export function exportTopicToMarkdown(topicName, questions = []) {
-    let md = `# 📚 ${topicName} — Lazzy DSA Study Cheat-Sheet\n\n`;
+    const cleanTag = topicName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+    let md = `---\n`;
+    md += `title: "${topicName} — Lazzy DSA Study Cheat-Sheet"\n`;
+    md += `tags: [dsa, ${cleanTag}, lazyy-notes]\n`;
+    md += `date: ${new Date().toISOString().split('T')[0]}\n`;
+    md += `exported_by: "Lazzy AI Assistant"\n`;
+    md += `---\n\n`;
+
+    md += `# 📚 ${topicName} — Lazzy DSA Study Cheat-Sheet\n\n`;
     md += `*Exported on: ${new Date().toLocaleDateString()}*\n\n`;
     md += `---\n\n`;
 

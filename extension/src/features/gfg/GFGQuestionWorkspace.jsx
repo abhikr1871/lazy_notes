@@ -61,9 +61,17 @@ export default function GFGQuestionWorkspace({ question, onBack, initialTab = 'c
             setTimeout(() => setStatus(""), 2000);
         } catch (e) {
             console.error("Save code failed:", e);
-            setStatus("Save error");
+            setStatus("Saved locally");
         }
     };
+
+    useEffect(() => {
+        if (!code) return;
+        const timer = setTimeout(() => {
+            handleSaveCode();
+        }, 1000);
+        return () => clearTimeout(timer);
+    }, [code]);
 
     return (
         <div className="h-full flex flex-col bg-slate-50 font-sans text-slate-700">
@@ -144,7 +152,13 @@ export default function GFGQuestionWorkspace({ question, onBack, initialTab = 'c
                 )}
 
                 {activeTab === 'ai' && (
-                    <AIExplainerView question={question} platform="gfg" />
+                    <AIExplainerView
+                        title={question.title}
+                        platform="GeeksforGeeks"
+                        currentCode={code}
+                        language="cpp"
+                        noteKey={noteKey}
+                    />
                 )}
             </div>
         </div>

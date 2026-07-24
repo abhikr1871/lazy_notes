@@ -29,6 +29,21 @@ const handleResponse = async (response) => {
     return data;
 };
 
+export const queuePendingSync = (endpoint, payload) => {
+    try {
+        if (typeof chrome !== 'undefined' && chrome.storage) {
+            chrome.storage.local.get(['pending_sync_queue'], (res) => {
+                const queue = res.pending_sync_queue || [];
+                queue.push({ endpoint, payload, timestamp: Date.now() });
+                chrome.storage.local.set({ pending_sync_queue: queue });
+                console.log("Queued offline sync item:", endpoint);
+            });
+        }
+    } catch (e) {
+        console.warn("Queue pending sync failed:", e);
+    }
+};
+
 export const api = {
     // Auth
     auth: {

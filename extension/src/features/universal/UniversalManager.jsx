@@ -16,7 +16,7 @@ export default function UniversalManager({ initialTab }) {
     const [topics, setTopics] = useState(INITIAL_TOPICS);
     const [activeTopic, setActiveTopic] = useState(null);
     const [activePlatform, setActivePlatform] = useState("All");
-    const [viewMode, setViewMode] = useState('list');
+    const [viewMode, setViewMode] = useState('list'); // 'list', 'subtopics', 'workspace', 'review', 'stats'
     const [activeQuestion, setActiveQuestion] = useState(null);
     const [workspaceTab, setWorkspaceTab] = useState(initialTab || 'code');
     const [newTopic, setNewTopic] = useState("");
@@ -26,7 +26,14 @@ export default function UniversalManager({ initialTab }) {
 
     const navigate = useNavigate();
 
-    // Auto detect active problem details from browser tab
+    // Listen for initialTab changes to switch workspace tab
+    useEffect(() => {
+        if (initialTab) {
+            setWorkspaceTab(initialTab);
+        }
+    }, [initialTab]);
+
+    // Auto detect active problem / webpage details from browser tab
     useEffect(() => {
         if (typeof chrome !== 'undefined' && chrome.tabs) {
             chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
@@ -36,18 +43,33 @@ export default function UniversalManager({ initialTab }) {
                             setActiveQuestion({
                                 id: res.title.toLowerCase().replace(/\s+/g, '-'),
                                 title: res.title,
-                                platform: res.platform || 'LeetCode',
+                                platform: res.platform || 'Web Note',
                                 difficulty: res.difficulty || 'Medium',
-                                url: res.url || '',
+                                url: res.url || tabs[0].url || '',
                                 code: res.code || ''
                             });
-                            setViewMode('workspace');
+                            if (initialTab || res.platform) {
+                                setViewMode('workspace');
+                            }
+                        } else if (tabs[0].title) {
+                            // Page Fallback for general web pages
+                            setActiveQuestion({
+                                id: tabs[0].title.toLowerCase().replace(/\s+/g, '-').slice(0, 40),
+                                title: tabs[0].title,
+                                platform: 'Web Note',
+                                difficulty: 'Medium',
+                                url: tabs[0].url || '',
+                                code: ''
+                            });
+                            if (initialTab) {
+                                setViewMode('workspace');
+                            }
                         }
                     });
                 }
             });
         }
-    }, []);
+    }, [initialTab]);
 
     const handleLogoClick = () => {
         setIsAnimating(true);
@@ -57,6 +79,46 @@ export default function UniversalManager({ initialTab }) {
     const handleLogout = () => {
         localStorage.removeItem('token');
         navigate('/login');
+    };
+
+    const addTopic = () => {
+        if (newTopic.trim() && !topics.includes(newTopic.trim())) {
+            setTopics([...topics, newTopic.trim()]);
+            setNewTopic("");
+        }
+    };
+
+    const addSubtopic = () => {
+        if (!newSubtopic.trim() || !activeTopic) return;
+        const sub = newSubtopic.trim();
+        setTopicData(prev => {
+            const topic = prev[activeTopic] || { subtopics: {} };
+            return {
+                ...prev,
+                [activeTopic]: {
+                    ...topic,
+                    subtopics: {
+                        ...(topic.subtopics || {}),
+                        [sub]: { scenario: "", sections: {} }
+                    }
+                }
+            };
+        });
+        setNewSubtopic("");
+    };
+
+    const handleSubtopicClick = (subtopic) => {
+        if (!activeQuestion) {
+            setActiveQuestion({
+                id: `${activeTopic}-${subtopic}`.toLowerCase().replace(/\s+/g, '-'),
+                title: `${activeTopic} - ${subtopic}`,
+                platform: 'Web Note',
+                difficulty: 'Medium',
+                url: window.location.href,
+                code: ""
+            });
+        }
+        setViewMode('workspace');
     };
 
     const handleExport = async (format) => {
@@ -73,16 +135,18 @@ export default function UniversalManager({ initialTab }) {
         }
     };
 
+    // 1. Workspace View
     if (viewMode === 'workspace' && activeQuestion) {
         return (
             <UniversalQuestionWorkspace
                 question={activeQuestion}
-                onBack={() => setViewMode('list')}
+                onBack={() => setViewMode(activeTopic ? 'subtopics' : 'list')}
                 initialTab={workspaceTab}
             />
         );
     }
 
+    // 2. Review View
     if (viewMode === 'review') {
         return (
             <div className="h-full flex flex-col bg-slate-50">
@@ -99,6 +163,7 @@ export default function UniversalManager({ initialTab }) {
         );
     }
 
+    // 3. Stats View
     if (viewMode === 'stats') {
         return (
             <div className="h-full flex flex-col bg-slate-50">
@@ -115,7 +180,85 @@ export default function UniversalManager({ initialTab }) {
         );
     }
 
-    // Default Topic List View (Preserves exact LeetCodeManager UI)
+    // 4. Subtopics List View
+    if (viewMode === 'subtopics' && activeTopic) {
+        const currentTopic = topicData[activeTopic] || {};
+        const subtopicsList = currentTopic.subtopics ? Object.keys(currentTopic.subtopics) : ["General", "Patterns", "Advanced"];
+
+        return (
+            <div className="h-full flex flex-col bg-slate-50/50 font-sans text-slate-700">
+                <header className="bg-white px-4 py-3 border-b border-slate-200 flex items-center justify-between shrink-0 shadow-sm sticky top-0 z-10">
+                    <div className="flex items-center gap-3">
+                        <button onClick={() => { setActiveTopic(null); setViewMode('list'); }} className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-indigo-600 transition-colors">
+                            <ArrowLeft size={20} />
+                        </button>
+                        <div>
+                            <h1 className="font-display font-bold text-lg text-slate-800 leading-none">{activeTopic}</h1>
+                            <p className="text-[10px] uppercase tracking-wider text-indigo-600 font-semibold mt-0.5">Universal Subtopics</p>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-1">
+                        <button
+                            onClick={() => handleExport('pdf')}
+                            className="px-2 py-1 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 font-bold rounded-lg text-[10px] flex items-center gap-1"
+                            title="Export Topic Notes as PDF"
+                        >
+                            <Download size={12} />
+                            <span>PDF</span>
+                        </button>
+                        <button
+                            onClick={() => handleExport('md')}
+                            className="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 font-bold rounded-lg text-[10px] flex items-center gap-1"
+                            title="Export Topic Notes as Markdown"
+                        >
+                            <Download size={12} />
+                            <span>MD</span>
+                        </button>
+                    </div>
+                </header>
+
+                <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+                    {subtopicsList.map(sub => (
+                        <div
+                            key={sub}
+                            onClick={() => handleSubtopicClick(sub)}
+                            className="group bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:shadow-md hover:border-indigo-300 cursor-pointer transition-all flex items-center justify-between"
+                        >
+                            <div className="flex items-center gap-3">
+                                <div className="bg-indigo-50 text-indigo-600 p-2 rounded-lg">
+                                    <FileText size={18} />
+                                </div>
+                                <span className="font-semibold text-slate-700 group-hover:text-indigo-700 transition-colors">{sub}</span>
+                            </div>
+                            <ChevronRight size={18} className="text-slate-300 group-hover:text-indigo-400 transition-colors" />
+                        </div>
+                    ))}
+                </div>
+
+                <div className="p-4 shrink-0 bg-gradient-to-t from-slate-50 to-transparent">
+                    <div className="bg-white p-1 rounded-xl shadow-lg shadow-slate-200/50 border border-slate-100 flex gap-1">
+                        <input
+                            type="text"
+                            value={newSubtopic}
+                            onChange={(e) => setNewSubtopic(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && addSubtopic()}
+                            placeholder="New Subtopic (e.g. Tree Traversal)..."
+                            className="flex-1 bg-transparent px-3 py-2 text-sm font-medium text-slate-700 placeholder:text-slate-400 focus:outline-none"
+                        />
+                        <button
+                            onClick={addSubtopic}
+                            disabled={!newSubtopic.trim()}
+                            className="bg-indigo-600 hover:bg-indigo-700 text-white p-2 rounded-lg transition-all duration-300 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed group"
+                        >
+                            <Plus size={18} strokeWidth={2.5} className="group-hover:rotate-90 transition-transform duration-300" />
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    // 5. Default Topic List View (Preserves exact LeetCodeManager UI)
     return (
         <div className="h-full flex flex-col bg-slate-50/50 font-sans text-slate-700">
             {/* Header */}
@@ -207,7 +350,7 @@ export default function UniversalManager({ initialTab }) {
                     {topics.map(t => (
                         <div
                             key={t}
-                            onClick={() => { setActiveTopic(t); }}
+                            onClick={() => { setActiveTopic(t); setViewMode('subtopics'); }}
                             className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md hover:border-indigo-300 cursor-pointer transition-all flex flex-col justify-between"
                         >
                             <span className="font-bold text-xs text-slate-800">{t}</span>
@@ -217,6 +360,26 @@ export default function UniversalManager({ initialTab }) {
                             </span>
                         </div>
                     ))}
+                </div>
+            </div>
+
+            <div className="p-4 shrink-0 bg-gradient-to-t from-slate-50 to-transparent">
+                <div className="bg-white p-1 rounded-xl shadow-lg shadow-slate-200/50 border border-slate-100 flex gap-1">
+                    <input
+                        type="text"
+                        value={newTopic}
+                        onChange={(e) => setNewTopic(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && addTopic()}
+                        placeholder="Add New Topic (e.g. Graph Algorithms)..."
+                        className="flex-1 bg-transparent px-3 py-2 text-sm font-medium text-slate-700 placeholder:text-slate-400 focus:outline-none"
+                    />
+                    <button
+                        onClick={addTopic}
+                        disabled={!newTopic.trim()}
+                        className="bg-indigo-600 hover:bg-indigo-700 text-white p-2 rounded-lg transition-all duration-300 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed group"
+                    >
+                        <Plus size={18} strokeWidth={2.5} className="group-hover:rotate-90 transition-transform duration-300" />
+                    </button>
                 </div>
             </div>
         </div>

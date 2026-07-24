@@ -20,7 +20,9 @@ function Signup() {
 
             // Save token
             localStorage.setItem('token', data.access_token);
-            alert('Account created successfully!');
+            if (typeof chrome !== 'undefined' && chrome.storage) {
+                chrome.storage.local.set({ token: data.access_token });
+            }
             // Redirect
             navigate('/');
 
